@@ -1,7 +1,13 @@
 use crate::state::State;
 
-fn quad(a: u64, b: u64, c: u64, d: u64) -> u64 {
+pub fn quad(a: u64, b: u64, c: u64, d: u64) -> u64 {
     a.wrapping_mul(b) ^ c.wrapping_mul(d)
+}
+
+/// Single-lane χ: returns (out1, out2, out3, out4) for direct attack analysis.
+pub fn chi_lane(x1: u64, x2: u64, x3: u64, x4: u64) -> (u64, u64, u64, u64) {
+    let g = quad(x1, x2, x3, x4);
+    (x1 ^ g, x2 ^ g.rotate_left(7), x3 ^ g.rotate_left(13), x4 ^ g.rotate_left(31))
 }
 
 pub fn chi(state: &State) -> State {

@@ -13,3 +13,8 @@ blake3 = "1.5"
 name = "avalanche_bench"
 path = "benches/avalanche_bench.rs"
 bench = false
+
+[[bin]]
+name = "attack_bench"
+path = "benches/attack_bench.rs"
+bench = false

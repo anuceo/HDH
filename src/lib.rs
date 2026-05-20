@@ -1,3 +1,4 @@
+pub mod attacks;
 pub mod chi;
 pub mod dfa;
 pub mod entropy;
