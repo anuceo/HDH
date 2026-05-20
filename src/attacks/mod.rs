@@ -1,9 +1,12 @@
 pub mod annihilator;
 pub mod differential;
+pub mod hybrid;
 pub mod jacobian;
 pub mod linear;
+pub mod phi_symmetry;
 pub mod preimage;
 pub mod sat;
+pub mod truncated;
 
 #[cfg(test)]
 mod tests {
@@ -276,6 +279,97 @@ mod tests {
             stats.maps_to_zero_count <= 16,
             "chi4 maps {} inputs to 0 — structural collapse toward zero detected",
             stats.maps_to_zero_count
+        );
+    }
+
+    // ── Differential-linear hybrid ──────────────────────────────────────────
+    //
+    // For a high-degree nonlinear function, combining a differential
+    // characteristic with a linear approximation should yield negligible bias.
+    // Threshold: below 1/√(samples) ≈ 1/√20000 ≈ 0.007.
+
+    #[test]
+    fn difflin_bias_is_negligible() {
+        let mut r = rng();
+        let stats = hybrid::sample_difflin_bias(50, 20_000, &mut r);
+        assert!(
+            stats.max_bias < 0.02,
+            "differential-linear max bias {:.4} — possible hybrid shortcut",
+            stats.max_bias
+        );
+    }
+
+    // ── Second-order (boomerang-rectangle) differential ─────────────────────
+    //
+    // The second-order derivative ∂²_{Δ₀,Δ₁}χ has degree ≥ deg(χ)−2 ≥ 30.
+    // Its parity should be unbiased; a bias would indicate a rectangular
+    // structure exploitable by boomerang distinguishers.
+
+    #[test]
+    fn second_order_differential_unbiased() {
+        let mut r = rng();
+        let stats = hybrid::test_second_order_differential(30, 10_000, &mut r);
+        assert!(
+            stats.max_bias < 0.02,
+            "second-order differential parity bias {:.4} — boomerang structure possible",
+            stats.max_bias
+        );
+    }
+
+    // ── Truncated differential propagation ─────────────────────────────────
+    //
+    // A single-nibble-active input difference should mix into multiple output
+    // nibbles the majority of the time (via the nonlinear g term).  Require
+    // ≥ 50% multi-nibble outputs for single-nibble inputs.
+
+    #[test]
+    fn truncated_diff_mixes_nibbles() {
+        let stats = truncated::analyze_truncated_differentials();
+        assert!(
+            stats.single_to_multi_rate >= 0.5,
+            "single-to-multi nibble rate {:.3} < 0.5 — chi4 diffusion is unexpectedly poor",
+            stats.single_to_multi_rate
+        );
+        // Average output nibble weight for the weakest input pattern must be ≥ 1.5
+        // (well above 1, meaning output differences spread beyond a single nibble).
+        assert!(
+            stats.min_avg_output_weight >= 1.5,
+            "min avg output nibble weight {:.2} — activity is concentrating rather than spreading",
+            stats.min_avg_output_weight
+        );
+    }
+
+    // ── Φ rotational symmetry ───────────────────────────────────────────────
+    //
+    // Φ is state-dependent: rotating the input state changes the routing
+    // indices, so φ(rotate(S,r)) ≠ rotate(φ(S),r) in general.  No exact
+    // equivariance should occur for random states at any rotation.
+
+    #[test]
+    fn phi_has_no_rotational_symmetry() {
+        let mut r = rng();
+        let stats = phi_symmetry::test_rotational_symmetry(200, &mut r);
+        assert!(
+            stats.max_exact_equivariance == 0.0,
+            "φ appears equivariant under some rotation: max exact match fraction = {:.6}",
+            stats.max_exact_equivariance
+        );
+    }
+
+    // ── Φ affine shift test ─────────────────────────────────────────────────
+    //
+    // For a state-dependent routing, φ(S⊕C)⊕φ(S) is not a constant for fixed C.
+    // If it were constant, an attacker could use affine algebra to reduce the
+    // effective key space.
+
+    #[test]
+    fn phi_output_xor_is_not_constant_for_fixed_shift() {
+        let mut r = rng();
+        let stats = phi_symmetry::test_affine_shift(20, 100, &mut r);
+        assert!(
+            stats.max_constant_output_frac < 0.1,
+            "φ(S⊕C)⊕φ(S) is constant for {:.1}% of inputs — affine shift symmetry detected",
+            stats.max_constant_output_frac * 100.0
         );
     }
 }

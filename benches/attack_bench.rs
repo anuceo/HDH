@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, differential, jacobian, linear, preimage, sat};
+use hdh::attacks::{annihilator, differential, hybrid, jacobian, linear, phi_symmetry, preimage, sat, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 9;
+    let total = 13;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -142,8 +142,86 @@ fn main() {
     println!("  RESULT: SAT reconstruction requires exponential branching; \
               adding pairs does not collapse the free-variable count.");
 
-    // ── 8. Algebraic immunity estimation ──────────────────────────────────────
-    section(8, total, "Algebraic Immunity  (4-bit χ, output-bit scan, d ≤ 3)");
+    // ── 8. Differential-linear hybrid ─────────────────────────────────────────
+    section(8, total, "Differential-Linear Hybrid  (64-bit χ lane, 100 masks × 50k samples)");
+
+    let dl = hybrid::sample_difflin_bias(100, 50_000, &mut rng);
+    println!("  Masks tested:        {}", dl.masks_tested);
+    println!("  Samples per mask:    {}", dl.samples_per_mask);
+    println!("  Max |bias|:          {:.6}", dl.max_bias);
+    println!("  Avg |bias|:          {:.6}", dl.avg_bias);
+    println!("  Statistical floor:  ~{:.6}  (1/√N)", 1.0f64 / (dl.samples_per_mask as f64).sqrt());
+    println!("  RESULT: {}", if dl.max_bias < 0.01 {
+        "no exploitable differential-linear correlation found"
+    } else { "WARNING — differential-linear bias exceeds noise floor" });
+
+    // ── 9. Second-order / boomerang-rectangle differential ────────────────────
+    section(9, total, "Second-Order Differential  (boomerang-rectangle test, 50 triples × 20k)");
+
+    let so = hybrid::test_second_order_differential(50, 20_000, &mut rng);
+    println!("  Triples (Δ₀,Δ₁,α):  {}", so.triples_tested);
+    println!("  Samples per triple:  {}", so.samples_per_triple);
+    println!("  Max |bias|:          {:.6}", so.max_bias);
+    println!("  Avg |bias|:          {:.6}", so.avg_bias);
+    println!("  Statistical floor:  ~{:.6}  (1/√N)", 1.0f64 / (so.samples_per_triple as f64).sqrt());
+    println!("  RESULT: {}", if so.max_bias < 0.01 {
+        "second-order derivative unbiased — no boomerang-rectangle structure found"
+    } else { "WARNING — second-order bias suggests rectangular exploitable structure" });
+
+    // ── 10. Truncated differential propagation ────────────────────────────────
+    section(10, total, "Truncated Differential Propagation  (4-bit χ, nibble-wise activity)");
+
+    let td = truncated::analyze_truncated_differentials();
+    println!("  {:>14}  {:>14}  {:>14}  {:>10}  {:>8}",
+        "Input pattern", "Observed outs", "Max out prob", "Avg wt", "Multi%");
+    for ps in &td.per_pattern {
+        println!("  {:>14b}  {:>14}  {:>14.4}  {:>10.2}  {:>7.1}%",
+            ps.input_pattern,
+            ps.observed_output_patterns.len(),
+            ps.max_output_prob,
+            ps.avg_output_nibble_weight,
+            ps.multi_nibble_output_frac * 100.0);
+    }
+    println!("  Worst max output probability:      {:.4}", td.worst_max_output_prob);
+    println!("  Min avg output nibble weight:      {:.2}", td.min_avg_output_weight);
+    println!("  Single→multi nibble mixing rate:   {:.1}%", td.single_to_multi_rate * 100.0);
+    println!("  Impossible truncated diffs:        {}", td.impossible_diff_count);
+    println!("  RESULT: {}", if td.single_to_multi_rate >= 0.5 {
+        "majority of single-nibble inputs produce multi-nibble output — good propagation"
+    } else { "WARNING — poor nibble propagation; truncated differential path exists" });
+
+    // ── 11. Φ rotational symmetry ─────────────────────────────────────────────
+    section(11, total, "Φ Rotational Symmetry  (1000 random states, 24 rotations)");
+
+    let ps = phi_symmetry::test_rotational_symmetry(1_000, &mut rng);
+    println!("  Rotations tested:         {}", ps.rotations_tested);
+    println!("  Samples per rotation:     {}", ps.samples_per_rotation);
+    println!("  Max exact equivariance:   {:.6}  (expect 0)", ps.max_exact_equivariance);
+    println!("  Max avg word-match frac:  {:.6}  (expect ≈ 2^{{-64}} ≈ 0)", ps.max_avg_word_match);
+    println!("  {:>4}  {:>20}  {:>22}", "r", "Exact equiv. frac.", "Avg word-match frac.");
+    for (i, (&ef, &wf)) in ps.exact_equivariance_fractions.iter()
+        .zip(ps.avg_word_match_fractions.iter()).enumerate()
+    {
+        println!("  {:>4}  {:>20.6}  {:>22.6}", i + 1, ef, wf);
+    }
+    println!("  RESULT: {}", if ps.max_exact_equivariance == 0.0 {
+        "no rotational symmetry detected — Φ routing is state-dependent as expected"
+    } else { "WARNING — Φ exhibits partial rotational equivariance" });
+
+    // ── 12. Φ affine shift test ───────────────────────────────────────────────
+    section(12, total, "Φ Affine Shift Test  (25 random constants, 200 samples each)");
+
+    let af = phi_symmetry::test_affine_shift(25, 200, &mut rng);
+    println!("  Constant shifts tested:   {}", af.shifts_tested);
+    println!("  Samples per shift:        {}", af.samples_per_shift);
+    println!("  Max constant-output frac: {:.4}  (expect ≈ 0 for state-dependent routing)",
+        af.max_constant_output_frac);
+    println!("  RESULT: {}", if af.max_constant_output_frac < 0.05 {
+        "φ(S⊕C)⊕φ(S) varies with S — no affine shift symmetry found"
+    } else { "WARNING — output XOR is approximately constant for some shift" });
+
+    // ── 13. Algebraic immunity estimation (4-bit χ) ──────────────────────────
+    section(12, total, "Algebraic Immunity  (4-bit χ, output-bit scan, d ≤ 3)");
 
     let ai = annihilator::analyze_algebraic_immunity(3);
     println!("  Per-bit AI estimate (first d where annihilator exists, or >max_d):");
@@ -165,8 +243,10 @@ fn main() {
         "WARNING — degree-1 annihilator found; possible linear structure"
     });
 
-    // ── 9. Invariant subspace detection ──────────────────────────────────────
-    section(9, total, "Invariant Subspace Detection  (4-bit χ, full scan)");
+    // ── 14. Invariant subspace detection ─────────────────────────────────────
+    // (Renumbered to accommodate hybrid/truncated/symmetry sections above)
+    section(13, total, "Invariant Subspace Detection  (4-bit χ, full scan)");
+
 
     let inv = annihilator::detect_invariant_subspaces();
     println!("  Total inputs scanned:     {}", inv.total_inputs);
