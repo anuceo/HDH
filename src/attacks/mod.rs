@@ -1,4 +1,5 @@
 pub mod annihilator;
+pub mod boomerang;
 pub mod differential;
 pub mod distinguisher;
 pub mod hybrid;
@@ -9,6 +10,7 @@ pub mod mitm;
 pub mod phi_symmetry;
 pub mod preimage;
 pub mod sat;
+pub mod sponge;
 pub mod truncated;
 
 #[cfg(test)]
@@ -659,6 +661,132 @@ mod tests {
             s1.uniformity_ratio >= s2.uniformity_ratio * 0.5,
             "1-round uniformity {:.2} far below 2-round {:.2} — measurement error",
             s1.uniformity_ratio, s2.uniformity_ratio
+        );
+    }
+
+    // ── Boomerang second-order differential analysis ─────────────────────────
+    //
+    // D²F(x; α, β) = F(x) ⊕ F(x⊕α) ⊕ F(x⊕β) ⊕ F(x⊕α⊕β).
+    // For a degree-d function, D²F has degree ≤ d-2.
+    //
+    // 1-round (deg ≤ 3): D²F has degree ≤ 1 → structured, potentially sub-random HW.
+    // 2-round (deg > 4): D²F has degree ≥ 2 → pseudorandom HW near STATE_BITS/2 = 3200.
+
+    #[test]
+    fn boomerang_sum_two_round_hw_near_random() {
+        // 2-round boomerang sum HW should be near the random expectation (3200).
+        // ±25% margin covers many standard deviations for 200 samples.
+        let mut r = rng();
+        let s = boomerang::test_boomerang_sum(1, 1, 200, &mut r);
+        assert!(
+            s.avg_hw > s.expected_hw * 0.75 && s.avg_hw < s.expected_hw * 1.25,
+            "2-round boomerang avg_hw={:.1} far from expected={:.1} — structural bias",
+            s.avg_hw, s.expected_hw
+        );
+        assert!(
+            s.frac_low_hw < 0.30,
+            "2-round frac_low_hw={:.3} — too many near-zero boomerang sums",
+            s.frac_low_hw
+        );
+    }
+
+    #[test]
+    fn boomerang_sum_one_round_more_structured_than_two() {
+        // 1-round D²F degree ≤ 1 (structured); 2-round degree ≥ 2 (pseudorandom).
+        // At least one of: 2-round avg_hw closer to expected, or frac_low_hw lower.
+        let mut r = rng();
+        let s1 = boomerang::test_boomerang_sum(1, 0, 200, &mut r);
+        let s2 = boomerang::test_boomerang_sum(1, 1, 200, &mut r);
+        let avg_gap1 = (s1.avg_hw - s1.expected_hw).abs();
+        let avg_gap2 = (s2.avg_hw - s2.expected_hw).abs();
+        assert!(
+            avg_gap2 <= avg_gap1 || s2.frac_low_hw <= s1.frac_low_hw,
+            "2-round not more random than 1-round: avg_gap 1r={avg_gap1:.1} 2r={avg_gap2:.1}; \
+             frac_low 1r={:.3} 2r={:.3}",
+            s1.frac_low_hw, s2.frac_low_hw
+        );
+    }
+
+    #[test]
+    fn boomerang_projected_two_round_near_random() {
+        // With fresh random (x, α, β) per sample, D²F's k-bit projection should
+        // match the 2^{-k} expectation for a high-degree (2-round) function.
+        // Assert log2_excess stays within ±3 bits (generous statistical tolerance).
+        let mut r = rng();
+        let s = boomerang::test_projected_boomerang(2, 4, 2_000, &mut r);
+        assert!(
+            s.log2_excess.abs() < 3.0,
+            "2-round projected boomerang log2_excess={:.2} far from 0 — unexpected structure",
+            s.log2_excess
+        );
+    }
+
+    #[test]
+    fn boomerang_rect_one_round_not_below_two_round() {
+        // 1-round lane structure → more intermediate-difference collisions.
+        // 2-round fully mixed → near-random collision rate.
+        // Ordering: 1-round log2_excess ≥ 2-round log2_excess.
+        let mut r = rng();
+        let r1 = boomerang::test_boomerang_rect(1, 100, 100, 8, &mut r);
+        let r2 = boomerang::test_boomerang_rect(2, 100, 100, 8, &mut r);
+        assert!(
+            r1.log2_excess >= r2.log2_excess,
+            "1-round rectangle excess {:.2} < 2-round {:.2} — structure direction inverted",
+            r1.log2_excess, r2.log2_excess
+        );
+    }
+
+    // ── Sponge construction security ────────────────────────────────────────
+
+    #[test]
+    fn sponge_128bit_security_achievable() {
+        // The 6400-bit state allows c >= 256 (so collision security >= 128 bits)
+        // with strictly positive rate.  min_rate_for_128bit is the *maximum* r
+        // such that c/2 >= 128, so it must be > 0.
+        let sweep = sponge::sweep_security_tradeoffs(6400);
+        assert!(
+            sweep.min_rate_for_128bit > 0,
+            "no rate value achieves 128-bit collision security — state too small?"
+        );
+    }
+
+    #[test]
+    fn sponge_recommended_rounds_exceeds_min_secure() {
+        let map = sponge::build_round_security_map();
+        assert!(
+            map.recommended_rounds > map.min_secure_rounds,
+            "recommended_rounds {} must exceed min_secure_rounds {} (safety margin)",
+            map.recommended_rounds, map.min_secure_rounds
+        );
+    }
+
+    #[test]
+    fn sponge_birthday_bound_holds_at_2_rounds() {
+        // Use 8-bit projection and 2000 samples so N/2^k = 2000/256 ≈ 7.8
+        // (dense birthday regime).  Actual collisions should stay within 3×
+        // the birthday expectation.
+        let mut r = rng();
+        let check = sponge::check_birthday_bound(8, 2000, &mut r);
+        assert!(
+            check.within_3x,
+            "birthday bound violated: actual={} expected={:.1} ratio={:.2}",
+            check.actual_collisions, check.expected_collisions, check.ratio
+        );
+    }
+
+    #[test]
+    fn sponge_256bit_security_achievable() {
+        // 6400-bit state can provide 256-bit collision security with ample rate.
+        // min_rate_for_256bit must be > 0 and above a reasonable threshold (1024).
+        let sweep = sponge::sweep_security_tradeoffs(6400);
+        assert!(
+            sweep.min_rate_for_256bit > 0,
+            "no rate achieves 256-bit collision security"
+        );
+        assert!(
+            sweep.min_rate_for_256bit >= 1024,
+            "max throughput-compatible rate for 256-bit security is only {} bits — unexpectedly low",
+            sweep.min_rate_for_256bit
         );
     }
 }

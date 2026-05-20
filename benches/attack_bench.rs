@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, differential, distinguisher, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, sat, truncated};
+use hdh::attacks::{annihilator, boomerang, differential, distinguisher, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, sat, sponge, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 23;
+    let total = 31;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -411,6 +411,147 @@ fn main() {
     }
     println!("  Ideal min-entropy: 10.0 bits; uniformity 1.0 = perfectly uniform.");
     println!("  RESULT: 2-round min-entropy and uniformity should match random expectation.");
+
+    // ── 24. Boomerang sum HW distribution ─────────────────────────────────────
+    section(24, total, "Boomerang Sum HW  (D²F, 200 samples, rounds 1 vs 2)");
+
+    println!("  {:>6}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}  {:>10}",
+        "Rounds", "Avg HW", "Min HW", "Max HW", "Std dev", "Frac <1600", "Expected");
+    for (rf, rb) in [(1usize, 0usize), (1, 1)] {
+        let s = boomerang::test_boomerang_sum(rf, rb, 200, &mut rng);
+        println!("  {:>6}  {:>10.1}  {:>10}  {:>10}  {:>10.1}  {:>10.4}  {:>10.1}",
+            rf + rb, s.avg_hw, s.min_hw, s.max_hw,
+            s.hw_std_dev, s.frac_low_hw, s.expected_hw);
+    }
+    println!("  Expected HW = STATE_BITS/2 = 3200 for a random function.");
+    println!("  frac < 1600 = fraction with HW below quarter-state (structured near-zero output).");
+    println!("  RESULT: 1-round D²F (deg ≤ 1) should show structured/sub-random HW;");
+    println!("          2-round should approach pseudorandom expectation near 3200.");
+
+    // ── 25. Projected boomerang excess ────────────────────────────────────────
+    section(25, total, "Projected Boomerang Excess  (k=4 bits, 2000 samples, rounds 1 vs 2)");
+
+    println!("  {:>6}  {:>12}  {:>12}  {:>12}  {:>12}",
+        "Rounds", "Zero frac", "Expected frac", "log2 excess", "Interpretation");
+    for rounds in [1usize, 2] {
+        let s = boomerang::test_projected_boomerang(rounds, 4, 2_000, &mut rng);
+        let interp = if s.log2_excess > 1.0 {
+            "structured (more zeros)"
+        } else if s.log2_excess < -1.0 {
+            "deficit (fewer zeros)"
+        } else {
+            "near-random"
+        };
+        println!("  {:>6}  {:>12.6}  {:>12.6}  {:>12.2}  {}",
+            rounds, s.zero_frac, s.expected_zero_frac, s.log2_excess, interp);
+    }
+    println!("  log2_excess > 0: more 4-bit zero projections than a random function would give.");
+    println!("  RESULT: 1-round should show positive excess (degree ≤ 1 structure);");
+    println!("          2-round should be near-random (log2_excess ≈ 0).");
+
+    // ── 26. Structured-difference boomerang ───────────────────────────────────
+    section(26, total, "Structured Boomerang  (single-bit α vs random α, 200 samples)");
+
+    println!("  {:>6}  {:>18}  {:>18}  {:>14}",
+        "Rounds", "avg_hw(single_bit_α)", "avg_hw(random_α)", "hw_reduction");
+    for rounds in [1usize, 2] {
+        let s = boomerang::test_structured_boomerang(rounds, 200, &mut rng);
+        println!("  {:>6}  {:>18.1}  {:>18.1}  {:>14.1}",
+            rounds, s.avg_hw_single_bit_alpha, s.avg_hw_random_alpha, s.hw_reduction);
+    }
+    println!("  hw_reduction = avg_hw(random_α) − avg_hw(single_bit_α).");
+    println!("  Positive: single-bit α gives smaller boomerang sum (lane-local χ advantage).");
+    println!("  RESULT: 1-round should show positive hw_reduction (lane isolation);");
+    println!("          2-round reduction should be smaller (cross-lane mixing destroys isolation).");
+
+    // ── 27. Boomerang-rectangle probability ───────────────────────────────────
+    section(27, total, "Boomerang Rectangle  (100×100 left/right, proj_bits=8, rounds 1 vs 2)");
+
+    println!("  {:>6}  {:>12}  {:>14}  {:>12}",
+        "Rounds", "Matching", "Expected", "log2 excess");
+    for rounds in [1usize, 2] {
+        let s = boomerang::test_boomerang_rect(rounds, 100, 100, 8, &mut rng);
+        println!("  {:>6}  {:>12}  {:>14.2}  {:>12.2}",
+            rounds, s.matching_quartets, s.expected_quartets, s.log2_excess);
+    }
+    println!("  Matching quartets: pairs (i,j) with same projected intermediate difference δ_i = δ_j.");
+    println!("  Expected = n_left * n_right / 2^proj_bits = 10000/256 ≈ 39.");
+    println!("  RESULT: 1-round clustering of diffs → higher matching count; 2-round near-random.");
+
+    // ── 28. Sponge security sweep ─────────────────────────────────────────────
+    section(28, total, "Sponge Security Sweep  (6400-bit state, rates [64..6144])");
+
+    let sweep = sponge::sweep_security_tradeoffs(6400);
+    println!("  {:>8}  {:>10}  {:>12}  {:>12}  {:>8}  {:>8}",
+        "Rate r", "Cap c=b-r", "col_bits=c/2", "Throughput", "≥128b?", "≥256b?");
+    for e in &sweep.entries {
+        println!("  {:>8}  {:>10}  {:>12.0}  {:>11.4}  {:>8}  {:>8}",
+            e.rate_bits, e.capacity_bits, e.collision_bits,
+            e.throughput_fraction,
+            if e.meets_128bit { "yes" } else { "no" },
+            if e.meets_256bit { "yes" } else { "no" });
+    }
+    println!("  Max rate for 128-bit security: {} bits  (c ≥ 256)", sweep.min_rate_for_128bit);
+    println!("  Max rate for 256-bit security: {} bits  (c ≥ 512)", sweep.min_rate_for_256bit);
+    println!("  RESULT: 6400-bit state comfortably supports 256-bit security at r={}  \
+              (throughput {:.2})",
+        sweep.min_rate_for_256bit,
+        sweep.min_rate_for_256bit as f64 / 6400.0);
+
+    // ── 29. Sponge round security map ─────────────────────────────────────────
+    section(29, total, "Sponge Round Security Map  (empirical attack results by round)");
+
+    let map = sponge::build_round_security_map();
+    println!("  {:>6}  {:>10}  {:>20}  {:>8}  {:>10}  {:>8}  {:>8}",
+        "Rounds", "deg bound", "Integral dist.", "MITM sep.", "Biclique exc.", "Passes", "");
+    for rs in &map.rounds {
+        println!("  {:>6}  {:>10}  {:>20}  {:>8}  {:>12.1}  {:>8}",
+            rs.rounds, rs.degree_bound,
+            if rs.integral_distinguisher { "yes (fail)" } else { "no" },
+            if rs.mitm_separable { "yes (fail)" } else { "no" },
+            rs.biclique_excess_bits,
+            if rs.passes_security_bar { "PASS" } else { "FAIL" });
+    }
+    println!("  Minimum secure rounds:   {}", map.min_secure_rounds);
+    println!("  Safety margin factor:    {}×", map.safety_margin_factor);
+    println!("  Recommended rounds:      {} (= min_secure × margin, ≥ min_secure + 1)",
+        map.recommended_rounds);
+    println!("  RESULT: 2+ rounds are empirically secure; recommended deployment = {} rounds.",
+        map.recommended_rounds);
+
+    // ── 30. Sponge state partition analysis ───────────────────────────────────
+    section(30, total, "Sponge State Partition  (capacity vs throughput for 6400-bit state)");
+
+    let part = sponge::analyze_state_partition(6400);
+    println!("  Security target  Min capacity  Max rate    Throughput");
+    for &(sec, max_rate, tput) in &part.max_rate_per_security {
+        let min_cap = 6400usize.saturating_sub(max_rate);
+        println!("  {:>13} b  {:>11}  {:>8}    {:.4}",
+            sec, min_cap, max_rate, tput);
+    }
+    println!();
+    println!("  Recommended for 256-bit security:");
+    println!("    capacity = {} bits", part.recommended_capacity);
+    println!("    rate     = {} bits  (throughput {:.4})", part.recommended_rate, part.recommended_throughput);
+    println!("  RESULT: r={} absorbs {:.1}% of state per call — very high throughput.",
+        part.recommended_rate, part.recommended_throughput * 100.0);
+
+    // ── 31. Sponge birthday bound check ──────────────────────────────────────
+    section(31, total, "Sponge Birthday Bound  (8-bit projection, 2000 samples, 2 rounds)");
+
+    let bbc = sponge::check_birthday_bound(8, 2_000, &mut rng);
+    println!("  Projection bits:     {}", bbc.projection_bits);
+    println!("  Samples:             {}", bbc.samples);
+    println!("  Actual collisions:   {}", bbc.actual_collisions);
+    println!("  Expected (birthday): {:.2}", bbc.expected_collisions);
+    println!("  Ratio actual/expect: {:.3}", bbc.ratio);
+    println!("  Within 3×?           {}", bbc.within_3x);
+    println!("  RESULT: {}",
+        if bbc.within_3x {
+            "collision count within 3× birthday expectation — 2-round output is birthday-uniform"
+        } else {
+            "WARNING — collision count exceeds 3× birthday bound; output may be biased"
+        });
 
     println!("\n=== Attack harness complete ===");
 }
