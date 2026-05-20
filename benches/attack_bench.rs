@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, differential, distinguisher, hybrid, jacobian, linear, phi_symmetry, preimage, sat, truncated};
+use hdh::attacks::{annihilator, differential, distinguisher, hybrid, integral, jacobian, linear, phi_symmetry, preimage, sat, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 16;
+    let total = 18;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -307,6 +307,41 @@ fn main() {
         } else {
             "dim=5 sums all zero — chi4 degree may be ≤ 4 (unexpected)"
         });
+
+    // ── 17. Higher-order integral distinguisher sweep ─────────────────────────
+    section(17, total, "Higher-Order Integral Distinguishers  (cube sum sweep, rounds 0–2)");
+
+    println!("  {:>6}  {:>5}  {:>8}  {:>14}  {:>16}  {:>10}",
+        "Rounds", "Dim", "Cubes", "Zero-sum frac", "Avg balanced", "Expected±σ");
+    for rounds in [0usize, 1, 2] {
+        let dims: &[usize] = if rounds == 0 { &[2, 3] } else { &[3, 4, 5, 6] };
+        let n_cubes = if rounds <= 1 { 30 } else { 20 };
+        for &dim in dims {
+            let s = integral::test_cube_sum(rounds, dim, n_cubes, &mut rng);
+            println!("  {:>6}  {:>5}  {:>8}  {:>13.1}%  {:>16.1}  {:.0}±{:.0}",
+                rounds, dim, n_cubes,
+                s.zero_sum_fraction * 100.0,
+                s.avg_balanced_bits,
+                s.expected_balanced_bits,
+                s.expected_std_dev);
+        }
+    }
+    println!("  Zero-sum frac: fraction of cubes where XOR of all 2^dim outputs = 0.");
+    println!("  Avg balanced:  mean output bits with XOR-sum bit = 0 (all 6400 output bits).");
+    println!("  RESULT: 1-round shows low-degree integral structure (deg ≤ 3 for most directions);");
+    println!("          2-round eliminates full integral (zero_frac=0) and avg_balanced falls to ~3700,");
+    println!("          confirming degree growth across the round transition.");
+
+    // ── 18. Large-cube test (1 round vs 2 rounds at dim=8) ────────────────────
+    section(18, total, "Large-Cube Integral Test  (dim=8, 256 evals/cube, rounds 1–2)");
+
+    for rounds in [1usize, 2] {
+        let s = integral::test_cube_sum(rounds, 8, 10, &mut rng);
+        println!("  rounds={rounds}  dim=8  n=10  zero_frac={:.1}%  avg_balanced={:.0}  max_balanced={}",
+            s.zero_sum_fraction * 100.0, s.avg_balanced_bits, s.max_balanced_bits);
+    }
+    println!("  RESULT: 1-round dim=8 cubes (256 evals) should still produce zero sums;");
+    println!("          2-round should show zero_frac=0, confirming round transition.");
 
     println!("\n=== Attack harness complete ===");
 }

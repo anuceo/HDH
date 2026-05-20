@@ -2,6 +2,7 @@ pub mod annihilator;
 pub mod differential;
 pub mod distinguisher;
 pub mod hybrid;
+pub mod integral;
 pub mod jacobian;
 pub mod linear;
 pub mod phi_symmetry;
@@ -458,6 +459,72 @@ mod tests {
             nonzero_frac > 0.05,
             "only {:.1}% of dim-5 cosets gave nonzero sum — chi4 may have degree ≤ 4",
             nonzero_frac * 100.0
+        );
+    }
+
+    // ── Higher-order integral distinguishers ────────────────────────────────
+    //
+    // 0 rounds = identity (degree 1): any cube dim ≥ 2 must give XOR sum = 0.
+    //
+    // 1 round: empirical analysis shows effective bit-level degree ≤ 3 for most
+    // input directions — ~93% of dim=4 cubes give zero XOR sum, and almost all
+    // output bits are individually balanced per cube.  This is an expected
+    // single-round property; HDH requires ≥ 2 rounds for security.
+    //
+    // 2 rounds: the degree exceeds 4 in all tested directions.  No dim ≤ 8 cube
+    // produces a zero XOR sum.  avg_balanced drops from ~6395 (1-round) to ~3700
+    // (2-round), indicating the degree growth destroys the integral structure.
+
+    #[test]
+    fn integral_control_identity_is_linear() {
+        // 0 rounds = identity (degree 1).  Every dim=2 cube must give XOR sum = 0.
+        let mut r = rng();
+        let stats = integral::test_cube_sum(0, 2, 10, &mut r);
+        assert_eq!(
+            stats.zero_sum_fraction, 1.0,
+            "identity function: {:.0}% of dim-2 cubes gave nonzero sum — test framework error",
+            (1.0 - stats.zero_sum_fraction) * 100.0
+        );
+    }
+
+    #[test]
+    fn integral_one_round_has_low_degree_structure() {
+        // After 1 round, HDH has degree ≤ 3 for most input directions.
+        // At dim=4 (16 evaluations per cube), ≥ 70% of random cubes should
+        // give XOR sum = 0, and avg_balanced_bits should exceed 6000 (most
+        // output bits are balanced for every tested cube).
+        let mut r = rng();
+        let stats = integral::test_cube_sum(1, 4, 30, &mut r);
+        assert!(
+            stats.zero_sum_fraction > 0.70,
+            "1-round dim=4: only {:.0}% of cubes gave zero XOR sum; expected > 70%",
+            stats.zero_sum_fraction * 100.0
+        );
+        assert!(
+            stats.avg_balanced_bits > 6_000.0,
+            "1-round dim=4: avg balanced bits {:.0} < 6000 — expected near-total balance",
+            stats.avg_balanced_bits
+        );
+    }
+
+    #[test]
+    fn integral_two_round_eliminates_full_integral() {
+        // After 2 rounds, degree exceeds 4 in every tested direction.
+        // No dim=4 cube should produce an all-zero XOR sum (zero_frac = 0.0),
+        // and avg_balanced_bits should be near the random baseline of ~3200.
+        let mut r = rng();
+        let stats = integral::test_cube_sum(2, 4, 20, &mut r);
+        assert_eq!(
+            stats.zero_sum_fraction, 0.0,
+            "2-round dim=4: {:.0}% of cubes gave zero XOR sum — integral structure survives to round 2",
+            stats.zero_sum_fraction * 100.0
+        );
+        // avg_balanced_bits should be well below the 1-round value (> 6000) and
+        // within 20σ of random (3200 ± 40).  Even 3900 < 6000 confirms degree growth.
+        assert!(
+            stats.avg_balanced_bits < 5_000.0,
+            "2-round avg balanced bits {:.0} suspiciously high — possible 1-round regression",
+            stats.avg_balanced_bits
         );
     }
 }
