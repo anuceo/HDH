@@ -1,5 +1,6 @@
 pub mod annihilator;
 pub mod differential;
+pub mod distinguisher;
 pub mod hybrid;
 pub mod jacobian;
 pub mod linear;
@@ -370,6 +371,93 @@ mod tests {
             stats.max_constant_output_frac < 0.1,
             "φ(S⊕C)⊕φ(S) is constant for {:.1}% of inputs — affine shift symmetry detected",
             stats.max_constant_output_frac * 100.0
+        );
+    }
+
+    // ── Reduced-round distinguishers ────────────────────────────────────────
+    //
+    // The full permutation should be indistinguishable from random by round 2.
+    // We test three independent distinguishers and require all fail at 2 rounds.
+
+    #[test]
+    fn avalanche_completeness_increases_with_rounds() {
+        let mut r = rng();
+        // Use small sample counts for test speed: 16 bits × 30 samples each.
+        let s1 = distinguisher::measure_avalanche(1, 16, 30, &mut r);
+        let s2 = distinguisher::measure_avalanche(2, 16, 30, &mut r);
+        // Completeness must grow: round 2 must have strictly more bits in [0.4,0.6]
+        // than round 1 (θ+φ together require ≥2 rounds for full avalanche).
+        assert!(
+            s2.completeness > s1.completeness,
+            "completeness did not grow: round1={:.2} round2={:.2}",
+            s1.completeness, s2.completeness
+        );
+        // Two-round avalanche mean must be above 30% (partial → near-full mixing).
+        assert!(
+            s2.mean_frac > 0.30,
+            "two-round avalanche mean {:.3} — expected > 0.30",
+            s2.mean_frac
+        );
+    }
+
+    #[test]
+    fn two_round_output_bits_are_balanced() {
+        let mut r = rng();
+        // 2000 samples, 32 bits; noise floor ≈ 2/√2000 ≈ 0.045.
+        // We allow up to 3× the noise floor as max bias (conservative for the
+        // sample count; systematic bias would appear as 10× or more).
+        let stats = distinguisher::measure_output_balance(2, 32, 2_000, &mut r);
+        assert!(
+            stats.max_abs_bias < stats.noise_floor * 3.0,
+            "round-2 max output bias {:.4} exceeds 3×noise_floor ({:.4}) — systematic bias",
+            stats.max_abs_bias,
+            stats.noise_floor * 3.0
+        );
+    }
+
+    #[test]
+    fn linear_distinguisher_fails_at_two_rounds() {
+        let mut r = rng();
+        // 30 mask pairs × 5000 samples; noise floor ≈ 1/√5000 ≈ 0.014.
+        let stats = distinguisher::measure_linear_bias(2, 30, 5_000, &mut r);
+        assert!(
+            stats.max_bias < stats.noise_floor * 3.0,
+            "round-2 linear max bias {:.4} — linear distinguisher may exist",
+            stats.max_bias
+        );
+    }
+
+    // ── Chi4 zero-sum property (exact algebraic) ────────────────────────────
+    //
+    // chi4 has max algebraic degree 5.  Any dim-6 affine coset (64 elements)
+    // must XOR-sum to 0 over all output bits.  This is a deterministic algebraic
+    // property — any failure indicates an ANF degree bound error.
+
+    #[test]
+    fn chi4_zero_sum_holds_at_dim_6() {
+        let mut r = rng();
+        let stats = distinguisher::check_zero_sum_chi4(6, 500, &mut r);
+        assert_eq!(
+            stats.nonzero_sum_count,
+            0,
+            "{}/{} dim-6 cosets gave nonzero XOR sum — chi4 degree > 5",
+            stats.nonzero_sum_count,
+            stats.cosets_tested
+        );
+    }
+
+    #[test]
+    fn chi4_zero_sum_fails_below_degree_threshold() {
+        // Negative control: dim-5 cosets (32 elements) should produce nonzero
+        // sums for a function with degree > 4, confirming the test discriminates.
+        let mut r = rng();
+        let stats = distinguisher::check_zero_sum_chi4(5, 500, &mut r);
+        // At least 5% of dim-5 cosets should have nonzero sum if degree > 4.
+        let nonzero_frac = stats.nonzero_sum_count as f64 / stats.cosets_tested as f64;
+        assert!(
+            nonzero_frac > 0.05,
+            "only {:.1}% of dim-5 cosets gave nonzero sum — chi4 may have degree ≤ 4",
+            nonzero_frac * 100.0
         );
     }
 }

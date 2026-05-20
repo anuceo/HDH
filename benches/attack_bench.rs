@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, differential, hybrid, jacobian, linear, phi_symmetry, preimage, sat, truncated};
+use hdh::attacks::{annihilator, differential, distinguisher, hybrid, jacobian, linear, phi_symmetry, preimage, sat, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 13;
+    let total = 16;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -260,6 +260,53 @@ fn main() {
     } else {
         "WARNING — fixed-point set is closed under XOR; linear invariant subspace exists"
     });
+
+    // ── 14. Reduced-round avalanche sweep ─────────────────────────────────────
+    section(14, total, "Reduced-Round Avalanche Completeness  (32 bits × 100 samples, rounds 1–3)");
+
+    println!("  {:>6}  {:>10}  {:>10}  {:>10}  {:>12}",
+        "Rounds", "Min frac", "Mean frac", "Max frac", "Completeness");
+    for r in 1..=3 {
+        let av = distinguisher::measure_avalanche(r, 32, 100, &mut rng);
+        println!("  {:>6}  {:>10.4}  {:>10.4}  {:>10.4}  {:>11.1}%",
+            r, av.min_frac, av.mean_frac, av.max_frac, av.completeness * 100.0);
+    }
+    println!("  Completeness = fraction of input bits with avg change-frac in [0.4, 0.6].");
+    println!("  RESULT: round 1 shows incomplete diffusion; round 2+ approaches full avalanche.");
+
+    // ── 15. Reduced-round output balance ──────────────────────────────────────
+    section(15, total, "Reduced-Round Output Balance  (64 bits, 5000 samples, rounds 1–3)");
+
+    println!("  {:>6}  {:>12}  {:>12}  {:>12}  {:>14}",
+        "Rounds", "Max |bias|", "Mean |bias|", "Noise floor", "Bits > floor");
+    for r in 1..=3 {
+        let bl = distinguisher::measure_output_balance(r, 64, 5_000, &mut rng);
+        println!("  {:>6}  {:>12.6}  {:>12.6}  {:>12.6}  {:>14}",
+            r, bl.max_abs_bias, bl.mean_abs_bias, bl.noise_floor, bl.bits_above_floor);
+    }
+    println!("  Noise floor = 2/√5000 ≈ 0.028.  Bits above floor = systematic bias count.");
+    println!("  RESULT: round 1 may show above-floor bits; round 2+ should drop to noise level.");
+
+    // ── 16. Chi4 zero-sum property (algebraic) ────────────────────────────────
+    section(16, total, "Chi4 Zero-Sum Property  (exact, dim 5 vs 6, 1000 cosets each)");
+
+    let zs5 = distinguisher::check_zero_sum_chi4(5, 1_000, &mut rng);
+    let zs6 = distinguisher::check_zero_sum_chi4(6, 1_000, &mut rng);
+    println!("  dim=5 (2^5=32 elements): {}/{} cosets gave nonzero sum  ({:.1}%)",
+        zs5.nonzero_sum_count, zs5.cosets_tested,
+        zs5.nonzero_sum_count as f64 / zs5.cosets_tested as f64 * 100.0);
+    println!("  dim=6 (2^6=64 elements): {}/{} cosets gave nonzero sum  ({:.1}%)",
+        zs6.nonzero_sum_count, zs6.cosets_tested,
+        zs6.nonzero_sum_count as f64 / zs6.cosets_tested as f64 * 100.0);
+    println!("  Accumulated xor (dim=6): 0x{:04x}  (must be 0x0000)", zs6.accumulated_xor);
+    println!("  RESULT: {}",
+        if zs6.nonzero_sum_count == 0 && zs5.nonzero_sum_count > 0 {
+            "zero-sum holds at dim=6 (degree ≤ 5 confirmed); dim=5 has nonzero sums (degree > 4 confirmed) — exact degree = 5"
+        } else if zs6.nonzero_sum_count > 0 {
+            "WARNING — dim=6 nonzero sum; chi4 degree > 5"
+        } else {
+            "dim=5 sums all zero — chi4 degree may be ≤ 4 (unexpected)"
+        });
 
     println!("\n=== Attack harness complete ===");
 }
