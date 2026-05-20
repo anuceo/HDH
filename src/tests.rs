@@ -3,7 +3,7 @@ mod tests {
     use crate::dfa::inject_bit_fault;
     use crate::state::State;
     use crate::stats::{avalanche_ratio, hamming_distance};
-    use crate::{chi, phi, round};
+    use crate::{chi, phi, theta, round};
 
     fn fixed_state(seed: u64) -> State {
         use std::num::Wrapping;
@@ -46,6 +46,42 @@ mod tests {
     }
 
     #[test]
+    fn theta_parity_invariant() {
+        // θ is linear and per-share; parity must satisfy
+        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next].
+        let s = chi::chi(&fixed_state(31415));
+        let out = theta::theta(&s);
+        for i in 0..25 {
+            let prev = (i + 24) % 25;
+            let next = (i + 1) % 25;
+            let expected = s.parity[prev] ^ s.parity[i] ^ s.parity[next];
+            assert_eq!(out.parity[i], expected, "theta parity mismatch at lane {i}");
+            // also verify parity matches actual share XOR
+            let actual = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
+            assert_eq!(out.parity[i], actual, "theta share parity broken at lane {i}");
+        }
+    }
+
+    #[test]
+    fn theta_cross_lane_diffusion() {
+        // a single-lane perturbation must reach its two neighbours after θ
+        let s = fixed_state(271828);
+        let mut perturbed = s.clone();
+        perturbed.s1[12] ^= 1;
+        let a = theta::theta(&s);
+        let b = theta::theta(&perturbed);
+        // lanes 11, 12, 13 must differ; all others must be identical
+        for i in 0..25 {
+            let changed = (a.s1[i] ^ b.s1[i]) != 0;
+            if i == 11 || i == 12 || i == 13 {
+                assert!(changed, "theta failed to propagate to lane {i}");
+            } else {
+                assert!(!changed, "theta unexpectedly changed lane {i}");
+            }
+        }
+    }
+
+    #[test]
     fn phi_deterministic() {
         let s = fixed_state(99);
         let a = phi::phi(&s);
@@ -66,12 +102,11 @@ mod tests {
 
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // chi operates per-lane; without a dedicated theta-like diffusion layer
-        // a single round diffuses within the lane across shares (~3-5% total).
-        // This threshold confirms non-trivial diffusion begins in round 1.
+        // θ spreads each chi-output perturbation to 3 lanes before φ routes it
+        // further; a single round achieves ~10-16% flipped bits in practice.
         assert!(
-            ratio > 0.01,
-            "single-round avalanche absent: {:.2}% bits flipped",
+            ratio > 0.08,
+            "single-round avalanche too weak: {:.2}% bits flipped",
             ratio * 100.0
         );
     }
@@ -91,12 +126,12 @@ mod tests {
 
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // phi propagates the perturbation to ~1/25 new lanes per round via
-        // state-dependent indexing; two rounds yields measurably more diffusion
-        // than one round but not yet full avalanche.
+        // θ expands each round's reach to 3 lanes; after two rounds the ring
+        // diffusion covers the full 25-lane state and φ completes the mixing.
+        // Two rounds reliably reach full (~50%) avalanche.
         assert!(
-            ratio > 0.05,
-            "two-round avalanche absent: {:.2}% bits flipped",
+            ratio > 0.40,
+            "two-round avalanche too weak: {:.2}% bits flipped",
             ratio * 100.0
         );
     }
@@ -116,10 +151,10 @@ mod tests {
 
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // exponential lane contamination through phi reaches global diffusion
-        // (~8+ lanes affected) by round 4; full avalanche expected here.
+        // four rounds of χ→θ→φ converge near the 50% ideal; tight bound
+        // confirms sustained saturation rather than a one-round spike.
         assert!(
-            ratio > 0.20,
+            ratio > 0.45,
             "four-round avalanche too weak: {:.2}% bits flipped",
             ratio * 100.0
         );

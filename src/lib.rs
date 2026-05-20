@@ -5,6 +5,7 @@ pub mod mask;
 pub mod phi;
 pub mod state;
 pub mod stats;
+pub mod theta;
 
 #[cfg(test)]
 mod tests;
@@ -23,6 +24,7 @@ pub fn round(mut s: State, round_idx: u64) -> State {
     }
 
     s = chi::chi(&s);
+    s = theta::theta(&s);
     s = phi::phi(&s);
 
     s
