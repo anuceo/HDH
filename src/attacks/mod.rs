@@ -2,6 +2,7 @@ pub mod annihilator;
 pub mod boomerang;
 pub mod differential;
 pub mod distinguisher;
+pub mod gpu_algebraic;
 pub mod hybrid;
 pub mod integral;
 pub mod jacobian;
@@ -11,6 +12,7 @@ pub mod phi_symmetry;
 pub mod preimage;
 pub mod sat;
 pub mod sponge;
+pub mod sponge_indiff;
 pub mod truncated;
 
 #[cfg(test)]
@@ -787,6 +789,142 @@ mod tests {
             sweep.min_rate_for_256bit >= 1024,
             "max throughput-compatible rate for 256-bit security is only {} bits — unexpectedly low",
             sweep.min_rate_for_256bit
+        );
+    }
+
+    // ── Formal sponge indifferentiability proof ─────────────────────────────
+    //
+    // Verifies the Bertoni et al. 2008 indifferentiability bound for HDH at the
+    // recommended (r=5888, c=512) operating point.
+
+    #[test]
+    fn indiff_256bit_secure_at_recommended_params() {
+        // At c=512, a balanced adversary with 2^126 queries of each type (forward,
+        // backward, hash) has q_eff ≈ 3×2^126 ≈ 2^127.6, giving
+        // advantage ≤ 2^{255.2}/2^512 = 2^{−256.8}.  Security > 256 bits.
+        let bound = sponge_indiff::compute_indiff_bound(sponge_indiff::IndiffGameParams {
+            state_bits: 6400,
+            rate_bits: 5888,
+            capacity_bits: 512,
+            q_forward_log2: 126,
+            q_backward_log2: 126,
+            q_hash_log2: 126,
+            output_blocks: 1,
+        });
+        assert!(
+            bound.is_256bit_secure,
+            "indiff security {:.1} bits < 256 at c=512, q_each=2^126",
+            bound.security_bits
+        );
+    }
+
+    #[test]
+    fn indiff_simulator_reliable_at_128bit_budget() {
+        // Simulator failure probability ≤ q_f × q_b / 2^c.
+        // At c=512, q_f = q_b = 2^128: P(fail) ≤ 2^{256}/2^{512} = 2^{−256} ≪ 2^{−128}.
+        let sc = sponge_indiff::simulator_consistency(512, 128, 128);
+        assert!(
+            sc.is_reliable_128bit,
+            "simulator failure prob 2^{:.1} exceeds 2^{{-128}} — consistency not guaranteed",
+            sc.failure_prob_log2
+        );
+    }
+
+    #[test]
+    fn indiff_query_budget_sweep_has_large_256bit_range() {
+        // With c=512, security drops below 256 bits only when q_total > 2^{128}.
+        // The sweep should show max_q_for_256bit_log2 >= 128.
+        let sweep = sponge_indiff::sweep_query_budgets(6400, 5888);
+        assert!(
+            sweep.max_q_for_256bit_log2 >= 128,
+            "max query budget for 256-bit security is only 2^{} — less than 2^128",
+            sweep.max_q_for_256bit_log2
+        );
+    }
+
+    #[test]
+    fn indiff_hash_proof_all_256bit_properties() {
+        // Assemble the full proof for c=512, r=5888, output=512 bits.
+        // All four standard properties must hold at ≥ 256 bits.
+        let proof = sponge_indiff::assemble_hash_proof(6400, 5888, 512);
+        assert!(
+            proof.all_256bit_properties_hold,
+            "not all 256-bit security properties hold: \
+             collision={:.0} preimage={:.0} PRF={:.0}",
+            proof.collision_security_bits,
+            proof.preimage_security_bits,
+            proof.prf_security_bits,
+        );
+        assert!(
+            proof.immune_to_length_extension,
+            "sponge should be immune to length-extension attacks"
+        );
+    }
+
+    // ── GPU-scale algebraic attack modeling ──────────────────────────────────
+    //
+    // Verifies that the XL/Gröbner and hybrid complexity models produce
+    // infeasible estimates for 2-round+ HDH, and that the solving-degree
+    // model correctly identifies the 1-round weakness (high solving degree
+    // despite low equation degree).
+
+    #[test]
+    fn algebraic_two_round_xl_is_infeasible() {
+        // 2-round HDH: n=6400 vars, eq_degree > 4 (use 8 as conservative estimate).
+        // XL complexity must be >> 2^{256} (far outside GPU reach).
+        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 8);
+        assert!(
+            sd.xl_time_log2 > 256.0,
+            "2-round XL time 2^{:.0} < 2^{{256}} — attack may be feasible",
+            sd.xl_time_log2
+        );
+    }
+
+    #[test]
+    fn algebraic_solving_degree_exceeds_eq_degree_for_large_systems() {
+        // For a square system (n=m=6400) of degree-3 equations, the XL solving
+        // degree must be >> 3 (the underdetermination forces it much higher).
+        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 3);
+        assert!(
+            sd.d_xl > 3,
+            "1-round solving degree {} = eq_degree 3 — underdetermination not modelled",
+            sd.d_xl
+        );
+        assert!(
+            sd.xl_time_log2 > 256.0,
+            "1-round XL time 2^{:.0} despite high solving degree — computation error",
+            sd.xl_time_log2
+        );
+    }
+
+    #[test]
+    fn algebraic_hybrid_does_not_break_security() {
+        // Hybrid attack on 2-round HDH (n=6400, d_XL from solving-degree model).
+        // Even the optimal variable-fixing split must leave complexity > 2^{128}.
+        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 8);
+        let hyb = gpu_algebraic::hybrid_attack_optimum(6400, sd.d_xl);
+        assert!(
+            hyb.total_log2 > 128.0,
+            "hybrid attack total complexity 2^{:.1} ≤ 2^{{128}} — feasible attack found",
+            hyb.total_log2
+        );
+    }
+
+    #[test]
+    fn algebraic_scale_sweep_shows_round_2_infeasible() {
+        // The scale sweep's 6400-bit 2-round entry must show best_known > 2^{256}.
+        let sweep = gpu_algebraic::algebraic_scale_sweep();
+        let entry_2r = sweep.entries.iter()
+            .find(|e| e.description.contains("2-round"))
+            .expect("2-round entry must be present in scale sweep");
+        assert!(
+            entry_2r.best_known_log2 > 256.0,
+            "2-round best-known algebraic complexity 2^{:.0} ≤ 2^{{256}}",
+            entry_2r.best_known_log2
+        );
+        assert!(
+            !entry_2r.is_gpu_feasible_exascale,
+            "2-round HDH algebraic attack is marked GPU-feasible on exascale — unexpected"
         );
     }
 }
