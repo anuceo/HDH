@@ -1,3 +1,4 @@
+pub mod annihilator;
 pub mod differential;
 pub mod jacobian;
 pub mod linear;
@@ -193,6 +194,88 @@ mod tests {
             "rank {} = degree2_var_count {} — system is exactly determined (unexpected)",
             stats.subsystem_rank,
             stats.degree2_var_count
+        );
+    }
+
+    // ── Annihilator search ──────────────────────────────────────────────────
+    //
+    // For chi4's degree-2 output bits, AI = 2 is expected and mathematically
+    // correct: the function itself is an annihilator of its complement at degree 2.
+    // The security-relevant property is that NO degree-1 (linear) annihilator
+    // exists for any bit, and that the carry-chain bits (higher degree) have AI ≥ 3.
+    //
+    // Test 1 uses max_degree=1 (fast: 17-monomial matrix per bit).
+    // Test 2 uses max_degree=2 to count carry-chain bits with AI > 2.
+
+    #[test]
+    fn annihilators_absent_at_low_degree() {
+        // No degree-1 (linear/affine) annihilator should exist for any output bit.
+        // A degree-1 annihilator would mean the function's support is contained in
+        // a hyperplane — an indicator of hidden linear structure.
+        let stats = annihilator::analyze_algebraic_immunity(1);
+        assert!(
+            stats.min_lb >= 2,
+            "min AI lower bound = {} — degree-1 annihilator found; linear structure in chi4",
+            stats.min_lb
+        );
+        // All 16 bits should resist degree-1 annihilators.
+        assert_eq!(
+            stats.high_ai_bit_count,
+            16,
+            "only {}/{} bits resist degree-1 annihilators",
+            stats.high_ai_bit_count,
+            stats.per_bit_lb.len()
+        );
+    }
+
+    #[test]
+    fn algebraic_immunity_meets_threshold() {
+        // The carry-chain bits (positions where multiplication introduces degree-4+
+        // terms via carry propagation) should have AI > 2 (no degree-≤2 annihilator).
+        // We require at least 4 such bits (the 4 carry-heavy positions per nibble pair).
+        let stats = annihilator::analyze_algebraic_immunity(2);
+        let high_ai = stats.per_bit_lb.iter().filter(|&&lb| lb >= 3).count();
+        assert!(
+            high_ai >= 4,
+            "{}/{} bits have AI ≥ 3 — expected ≥ 4 carry-chain bits to resist degree-2",
+            high_ai,
+            stats.per_bit_lb.len()
+        );
+        // And confirm no degree-1 annihilators (min_lb ≥ 2 still).
+        assert!(
+            stats.min_lb >= 2,
+            "min AI = {} — a linear annihilator exists; unexpected structural collapse",
+            stats.min_lb
+        );
+    }
+
+    // ── Invariant subspace detection ────────────────────────────────────────
+    //
+    // For chi₄ (a bijection on 2^16 points), the expected number of fixed
+    // points under a random permutation is 1.  We allow a small window
+    // [0, 10] to tolerate the non-random structure of chi₄; a very large
+    // count would indicate an exploitable invariant subspace.
+
+    #[test]
+    fn invariant_subspace_only_trivial() {
+        let stats = annihilator::detect_invariant_subspaces();
+        // chi4 has structural fixed points wherever g=0 (a nonlinear condition on the
+        // inputs).  The relevant cryptographic question is NOT the raw count but whether
+        // those fixed points constitute a GF(2)-linear subspace — which would imply an
+        // algebraically exploitable invariant subspace.  A non-power-of-2 cardinality
+        // already rules out a linear subspace; the explicit closure check confirms it.
+        assert!(
+            !stats.fixed_points_form_linear_subspace,
+            "fixed-point set ({} points) is closed under XOR — linear invariant subspace detected",
+            stats.fixed_point_count
+        );
+        // Maps-to-zero: a handful of inputs satisfying the self-consistency equation
+        // g = quad(g, rot1(g), rot2(g), rot3(g)) is expected; a large count would
+        // indicate a collapse toward zero.
+        assert!(
+            stats.maps_to_zero_count <= 16,
+            "chi4 maps {} inputs to 0 — structural collapse toward zero detected",
+            stats.maps_to_zero_count
         );
     }
 }

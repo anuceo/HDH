@@ -1,4 +1,4 @@
-use hdh::attacks::{differential, jacobian, linear, preimage, sat};
+use hdh::attacks::{annihilator, differential, jacobian, linear, preimage, sat};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 7;
+    let total = 9;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -141,6 +141,45 @@ fn main() {
               cannot be simplified by unit propagation)", last.log2_dpll_search);
     println!("  RESULT: SAT reconstruction requires exponential branching; \
               adding pairs does not collapse the free-variable count.");
+
+    // ── 8. Algebraic immunity estimation ──────────────────────────────────────
+    section(8, total, "Algebraic Immunity  (4-bit χ, output-bit scan, d ≤ 3)");
+
+    let ai = annihilator::analyze_algebraic_immunity(3);
+    println!("  Per-bit AI estimate (first d where annihilator exists, or >max_d):");
+    for (i, &lb) in ai.per_bit_lb.iter().enumerate() {
+        let label = if lb > 3 { "AI>3 (carry-chain)".to_string() } else { format!("AI={lb}") };
+        println!("    bit {:>2}: {label}", i);
+    }
+    println!("  Min AI lower bound:             {}", ai.min_lb);
+    println!("  Max AI lower bound:             {}", ai.max_lb);
+    println!("  Bits with AI > max_degree (3):  {} / 16", ai.high_ai_bit_count);
+    println!("  Theoretical upper bound AI:     {} (= ⌈16/2⌉)", ai.theoretical_upper_bound);
+    println!("  RESULT: {}", if ai.min_lb >= 2 {
+        if ai.high_ai_bit_count >= 4 {
+            "no degree-1 annihilators; ≥4 carry-chain bits resist degree-3 search — algebraic immunity confirmed"
+        } else {
+            "no degree-1 annihilators found; carry-chain bits may be limited"
+        }
+    } else {
+        "WARNING — degree-1 annihilator found; possible linear structure"
+    });
+
+    // ── 9. Invariant subspace detection ──────────────────────────────────────
+    section(9, total, "Invariant Subspace Detection  (4-bit χ, full scan)");
+
+    let inv = annihilator::detect_invariant_subspaces();
+    println!("  Total inputs scanned:     {}", inv.total_inputs);
+    println!("  Fixed points (χ₄(x)=x):  {}", inv.fixed_point_count);
+    println!("    (structural: occur when g=0, a nonlinear condition — not a linear subspace)");
+    println!("  Two-cycles (period-2):    {}", inv.two_cycle_count);
+    println!("  Maps to zero (χ₄(x)=0):  {}", inv.maps_to_zero_count);
+    println!("  Fixed points form linear subspace? {}", inv.fixed_points_form_linear_subspace);
+    println!("  RESULT: {}", if !inv.fixed_points_form_linear_subspace {
+        "fixed-point set is not GF(2)-closed — no linear invariant subspace detected"
+    } else {
+        "WARNING — fixed-point set is closed under XOR; linear invariant subspace exists"
+    });
 
     println!("\n=== Attack harness complete ===");
 }
