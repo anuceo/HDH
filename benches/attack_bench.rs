@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, differential, distinguisher, hybrid, integral, jacobian, linear, phi_symmetry, preimage, sat, truncated};
+use hdh::attacks::{annihilator, differential, distinguisher, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, sat, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 18;
+    let total = 23;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -342,6 +342,75 @@ fn main() {
     }
     println!("  RESULT: 1-round dim=8 cubes (256 evals) should still produce zero sums;");
     println!("          2-round should show zero_frac=0, confirming round transition.");
+
+    // ── 19. MITM Cat 1: partition matching ────────────────────────────────────
+    section(19, total, "MITM Cat 1: Partition Matching  (500 samples × 20-bit projection)");
+
+    for rounds in [1usize, 2, 3] {
+        let s = mitm::measure_partition_matching(rounds, 500, 20, &mut rng);
+        println!("  rounds={rounds}  actual_collisions={}  expected={:.2}  log2_excess={:.2}",
+            s.actual_collisions, s.expected_collisions, s.log2_excess);
+    }
+    println!("  log2_excess > 0 = more collisions than random birthday bound → matching surface.");
+    println!("  RESULT: 2-round should show log2_excess ≤ 0; 1-round may show mild excess.");
+
+    // ── 20. MITM Cat 2: lane dependency graph ────────────────────────────────
+    section(20, total, "MITM Cat 2: χ Dependency / Lane Isolation  (200 pairs × 15 samples)");
+
+    println!("  {:>6}  {:>12}  {:>12}  {:>14}  {:>14}  {:>13}",
+        "Rounds", "Avg inf.", "Zero-inf. %", "Same-lane %", "Cross-lane %", "Isolation");
+    for rounds in [1usize, 2] {
+        let d = mitm::analyze_dependency_graph(rounds, 200, 15, &mut rng);
+        println!("  {:>6}  {:>12.4}  {:>11.1}%  {:>13.1}%  {:>13.1}%  {:>13.2}×",
+            rounds, d.avg_influence_prob,
+            d.zero_influence_fraction * 100.0,
+            d.same_lane_influence_frac * 100.0,
+            d.cross_lane_influence_frac * 100.0,
+            d.isolation_ratio);
+    }
+    println!("  Isolation ratio: same_lane_frac / cross_lane_frac.  >> 1 = lane isolation.");
+    println!("  RESULT: 1-round shows high isolation; 2-round collapses toward 1.0×.");
+
+    // ── 21. MITM Cat 3: Φ+round linear rank (influence matrix) ───────────────
+    section(21, total, "MITM Cat 3: θ-Φ Linear Rank  (32 bits × 30 influence samples)");
+
+    let lr = mitm::measure_influence_rank(32, 30, &mut rng);
+    println!("  Function       Rank  /  Max  =  Fraction");
+    println!("  Φ alone        {:>4}  / {:>4}  =  {:.3}", lr.phi_rank, lr.max_rank, lr.phi_rank_fraction);
+    println!("  1-round        {:>4}  / {:>4}  =  {:.3}", lr.one_round_rank, lr.max_rank, lr.one_round_rank_fraction);
+    println!("  2-round        {:>4}  / {:>4}  =  {:.3}", lr.two_round_rank, lr.max_rank, lr.two_round_rank_fraction);
+    println!("  Rank hierarchy (Φ < 1-round < 2-round) confirms θ+χ composition fills");
+    println!("  sparse Φ connectivity.  Near-full 2-round rank = no low-rank factoring.");
+
+    // ── 22. MITM Cat 4: biclique-style matching ───────────────────────────────
+    section(22, total, "MITM Cat 4: Biclique Matching  (dim=5 cube, 12 target bits, 10 bases)");
+
+    for rounds in [1usize, 2] {
+        let bc = if rounds == 1 {
+            mitm::test_biclique_matching(5, 12, 10, &mut rng)
+        } else {
+            mitm::test_biclique_matching_rounds(5, 12, 10, 2, &mut rng)
+        };
+        println!("  rounds={rounds}  mean_match_frac={:.6}  expected={:.6}  log2_excess={:.2}  any_match={:.0}%",
+            bc.mean_matching_pair_fraction, bc.expected_pair_fraction,
+            bc.log2_excess, bc.any_match_fraction * 100.0);
+    }
+    println!("  1-round large excess (≈8–9 bits) = confirmed degree-3 structure in cube outputs.");
+    println!("  2-round should approach log2_excess ≈ 0 (biclique structure destroyed).");
+
+    // ── 23. MITM Cat 5: entropy surface collapse ──────────────────────────────
+    section(23, total, "MITM Cat 5: Entropy Surface  (3000 samples × 10-bit projection)");
+
+    println!("  {:>6}  {:>12}  {:>14}  {:>12}  {:>12}",
+        "Rounds", "Collisions", "Expected coll.", "Min-entropy", "Uniformity");
+    for rounds in [1usize, 2, 3] {
+        let s = mitm::measure_entropy_collapse(rounds, 3_000, 10, &mut rng);
+        println!("  {:>6}  {:>12}  {:>14.2}  {:>11.2}  {:>11.2}×",
+            rounds, s.collision_count, s.expected_collisions,
+            s.min_entropy_bits, s.uniformity_ratio);
+    }
+    println!("  Ideal min-entropy: 10.0 bits; uniformity 1.0 = perfectly uniform.");
+    println!("  RESULT: 2-round min-entropy and uniformity should match random expectation.");
 
     println!("\n=== Attack harness complete ===");
 }

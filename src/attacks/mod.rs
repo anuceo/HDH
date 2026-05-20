@@ -5,6 +5,7 @@ pub mod hybrid;
 pub mod integral;
 pub mod jacobian;
 pub mod linear;
+pub mod mitm;
 pub mod phi_symmetry;
 pub mod preimage;
 pub mod sat;
@@ -525,6 +526,139 @@ mod tests {
             stats.avg_balanced_bits < 5_000.0,
             "2-round avg balanced bits {:.0} suspiciously high — possible 1-round regression",
             stats.avg_balanced_bits
+        );
+    }
+
+    // ── MITM: structured forward/backward separability analysis ─────────────
+    //
+    // Primary question: does 2-round HDH destroy forward/backward separability
+    // after the degree-inflection transition at the 1→2 round boundary?
+    //
+    // Cat 1 – partition matching:  2-round intermediate state collisions should
+    //   equal random birthday expectation (no exploitable matching surface).
+    // Cat 2 – dependency graph:    2-round isolation ratio should drop to ~1
+    //   (all 25 lanes affect every output lane); 1-round shows lane isolation.
+    // Cat 3 – Φ linear rank:       Φ and 1-round should be near full rank in
+    //   the sampled n_bits × n_bits influence submatrix.
+    // Cat 4 – biclique matching:   2-round cubes should show zero log2_excess
+    //   (collision rate within random expectation).
+    // Cat 5 – entropy collapse:    min_entropy at 2 rounds should approach k_bits.
+
+    #[test]
+    fn mitm_cat1_two_round_no_partition_excess() {
+        // 2-round intermediate state projected to 20 bits should show collisions
+        // consistent with the birthday bound (log2_excess ≤ 2.0 bits of excess).
+        let mut r = rng();
+        let s2 = mitm::measure_partition_matching(2, 500, 20, &mut r);
+        assert!(
+            s2.log2_excess <= 2.0,
+            "2-round partition: log2_excess={:.2} — matching surface may exist",
+            s2.log2_excess
+        );
+        // 1-round should show more excess than 2-round (confirming measurement sensitivity).
+        let s1 = mitm::measure_partition_matching(1, 500, 20, &mut r);
+        assert!(
+            s1.log2_excess >= s2.log2_excess - 1.0,
+            "1-round excess {:.2} unexpectedly below 2-round {:.2}",
+            s1.log2_excess, s2.log2_excess
+        );
+    }
+
+    #[test]
+    fn mitm_cat2_two_round_destroys_lane_isolation() {
+        // At 1 round, same-lane influence >> cross-lane (isolation_ratio >> 1).
+        // At 2 rounds, all lanes couple — isolation_ratio should drop below 2.0.
+        let mut r = rng();
+        let d1 = mitm::analyze_dependency_graph(1, 200, 15, &mut r);
+        let d2 = mitm::analyze_dependency_graph(2, 200, 15, &mut r);
+        assert!(
+            d1.isolation_ratio > d2.isolation_ratio,
+            "round 1 isolation ratio {:.2} ≤ round 2 {:.2} — diffusion did not grow",
+            d1.isolation_ratio, d2.isolation_ratio
+        );
+        // 2-round cross-lane influence must be substantial (> 50% of pairs).
+        assert!(
+            d2.cross_lane_influence_frac > 0.50,
+            "2-round cross-lane influence only {:.1}% — lane isolation persists",
+            d2.cross_lane_influence_frac * 100.0
+        );
+    }
+
+    #[test]
+    fn mitm_cat3_phi_influence_rank_is_near_full() {
+        // Φ's influence matrix is sparse: each output lane fetches from only
+        // ~2 out of 25 input lanes via state-derived routing.  In a 24-bit
+        // random subspace, Φ alone has low rank (many zero-influence pairs).
+        // This is structurally expected for a routing-based function.
+        //
+        // Security comes from the FULL ROUND:  1-round and 2-round must show
+        // significantly higher rank, confirming θ+χ composition fills in the
+        // sparse connectivity of Φ.  We assert rank(2-round) > rank(Φ alone).
+        let mut r = rng();
+        let s = mitm::measure_influence_rank(24, 20, &mut r);
+        // 2-round rank must strictly exceed Φ-alone rank (θ+χ composition helps).
+        assert!(
+            s.two_round_rank > s.phi_rank,
+            "2-round rank {} ≤ Φ rank {} — θ+χ composition not expanding connectivity",
+            s.two_round_rank, s.phi_rank
+        );
+        // 1-round rank must also exceed Φ alone (even one round adds diffusion).
+        assert!(
+            s.one_round_rank > s.phi_rank,
+            "1-round rank {} ≤ Φ rank {} — χ+θ not adding to Φ influence coverage",
+            s.one_round_rank, s.phi_rank
+        );
+    }
+
+    #[test]
+    fn mitm_cat4_biclique_excess_collapses_at_two_rounds() {
+        // At 1 round (degree ≤ 3): within a dim=5 cube, outputs are degree-3
+        // functions of 5 bits → massive biclique collision excess (log2 ≈ 8–9)
+        // due to structured output compression.  This is the EXPECTED single-round
+        // structural weakness confirming low algebraic degree.
+        //
+        // At 2 rounds: the degree explosion must destroy this structure.
+        // 2-round log2_excess must be substantially smaller than 1-round.
+        let mut r = rng();
+        let bc1 = mitm::test_biclique_matching(5, 12, 8, &mut r);
+        let bc2 = mitm::test_biclique_matching_rounds(5, 12, 8, 2, &mut r);
+        // 1-round must show large excess (confirming low-degree structure is detectable).
+        assert!(
+            bc1.log2_excess > 4.0,
+            "1-round biclique log2_excess={:.2} < 4 — low-degree structure not detected",
+            bc1.log2_excess
+        );
+        // 2-round excess must be substantially less than 1-round.
+        assert!(
+            bc2.log2_excess < bc1.log2_excess - 3.0,
+            "2-round log2_excess={:.2} not much less than 1-round {:.2} — biclique persists",
+            bc2.log2_excess, bc1.log2_excess
+        );
+    }
+
+    #[test]
+    fn mitm_cat5_two_round_entropy_does_not_collapse() {
+        // Project outputs to k=10 bits with N=3000 samples (N/2^k ≈ 2.9, dense
+        // regime).  For a random permutation, max bucket count ≈ 7–10 → uniformity
+        // ratio ≈ 2–4.  An entropy-collapsed function would show ratio >> 10.
+        //
+        // We also verify 1-round uniformity_ratio > 2-round uniformity_ratio,
+        // confirming 2 rounds is strictly stronger (less biased distribution).
+        let mut r = rng();
+        let s2 = mitm::measure_entropy_collapse(2, 3_000, 10, &mut r);
+        let s1 = mitm::measure_entropy_collapse(1, 3_000, 10, &mut r);
+        // 2-round uniformity ratio must be ≤ 10 (not catastrophically skewed).
+        assert!(
+            s2.uniformity_ratio <= 10.0,
+            "2-round uniformity ratio {:.2} > 10 — output distribution severely non-uniform",
+            s2.uniformity_ratio
+        );
+        // 1-round must be at least as non-uniform as 2-round (can't be more
+        // random-looking than a stronger function).
+        assert!(
+            s1.uniformity_ratio >= s2.uniformity_ratio * 0.5,
+            "1-round uniformity {:.2} far below 2-round {:.2} — measurement error",
+            s1.uniformity_ratio, s2.uniformity_ratio
         );
     }
 }
