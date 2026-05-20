@@ -1,16 +1,16 @@
 /// Two complementary preimage analyses:
 ///
 /// 1. **8-bit reduced χ — exhaustive preimage counting.**
-///    Given output (o1,o2,o3,o4) over u8, enumerate all 256 candidate `g`
-///    values and count how many satisfy the self-consistency equation
-///    g = quad8(o1⊕g, o2⊕rl(g,3), o3⊕rl(g,5), o4⊕rl(g,7)).
-///    Expected count ≈ 1 for a near-bijective function.
+/// 2. **4-bit reduced χ — ANF, degree propagation, and structural isolation.**
 ///
-/// 2. **4-bit reduced χ — exact algebraic degree via ANF.**
-///    Enumerate all 2^16 inputs, build truth tables for each output bit,
-///    apply the Möbius transform to obtain the algebraic normal form, and
-///    read off the maximum monomial degree.  Degree ≥ 4 rules out all
-///    degree-2 algebraic attacks (XL, Gröbner at D=2) on the core.
+/// Degree propagation tracks how the algebraic degree grows when χ₄ is
+/// composed with itself across rounds; saturation at the maximum (16 for
+/// 4-bit) should occur early, confirming full nonlinear coverage.
+///
+/// Structural isolation asks: can the degree-2 monomials in the ANF be
+/// extracted as a solvable linear subsystem?  PASS means the subsystem is
+/// massively underdetermined (far more z-variables than equations), so no
+/// linear-algebraic shortcut exists through the quadratic layer alone.
 use rand::Rng;
 
 // ── 8-bit reduced χ ────────────────────────────────────────────────────────
@@ -147,6 +147,125 @@ pub fn analyze_algebraic_degree() -> DegreeStats {
     let min_degree = *degrees.iter().min().unwrap();
     let max_degree = *degrees.iter().max().unwrap();
     DegreeStats { degrees, min_degree, max_degree }
+}
+
+// ── 4-bit χ — degree propagation across rounds ─────────────────────────────
+
+pub struct DegreePropStats {
+    /// Maximum algebraic degree over all 16 output bits after round k (1-indexed).
+    pub max_degree_per_round: Vec<usize>,
+    /// Round index (1-based) where degree first reaches its maximum value.
+    pub saturation_round: usize,
+}
+
+/// Compose chi4 with itself up to `max_rounds` times and measure the growth of
+/// the maximum algebraic degree across all 16 output bits.
+pub fn degree_propagation(max_rounds: usize) -> DegreePropStats {
+    const SIZE: usize = 1 << 16;
+    // composition[i] = chi4^k(i) after k rounds.  Start as identity.
+    let mut composition: Vec<u16> = (0u16..=0xFFFF).collect();
+    let mut max_degree_per_round = Vec::with_capacity(max_rounds);
+    let mut saturation_round = max_rounds;
+    let mut prev_max = 0usize;
+
+    for round in 0..max_rounds {
+        for entry in composition.iter_mut() {
+            *entry = chi4(*entry);
+        }
+        let max_deg = (0..16u16)
+            .map(|bit| {
+                let tt: Vec<u8> =
+                    (0usize..SIZE).map(|i| ((composition[i] >> bit) & 1) as u8).collect();
+                anf_degree(&mobius_transform(&tt))
+            })
+            .max()
+            .unwrap_or(0);
+
+        if max_deg == prev_max && saturation_round == max_rounds {
+            saturation_round = round + 1; // 1-based
+        }
+        prev_max = max_deg;
+        max_degree_per_round.push(max_deg);
+    }
+
+    // If degree strictly increased every round, saturation_round == max_rounds.
+    DegreePropStats { max_degree_per_round, saturation_round }
+}
+
+// ── 4-bit χ — structural isolation of degree-2 subsystem ──────────────────
+
+pub struct IsolationStats {
+    /// Number of degree-2 monomials: C(16,2) = 120.
+    pub degree2_var_count: usize,
+    /// Number of equations (one per output bit).
+    pub equation_count: usize,
+    /// GF(2) rank of the 16×120 degree-2 coefficient matrix.
+    pub subsystem_rank: usize,
+    /// degree2_var_count / subsystem_rank — how many z-variables are free per
+    /// independent equation.  High values mean the subsystem is underdetermined
+    /// and no linear shortcut through the quadratic layer exists.
+    pub underdetermination_ratio: f64,
+}
+
+fn gf2_rank_small(rows: &[[u64; 2]], n_cols: usize) -> usize {
+    let mut mat = rows.to_vec();
+    let n = mat.len();
+    let mut pivot = 0usize;
+    for col in 0..n_cols {
+        let word = col / 64;
+        let bit = col % 64;
+        let found = (pivot..n).find(|&r| (mat[r][word] >> bit) & 1 == 1);
+        if let Some(r) = found {
+            mat.swap(pivot, r);
+            let prow = mat[pivot];
+            for r2 in 0..n {
+                if r2 != pivot && (mat[r2][word] >> bit) & 1 == 1 {
+                    mat[r2][0] ^= prow[0];
+                    mat[r2][1] ^= prow[1];
+                }
+            }
+            pivot += 1;
+        }
+    }
+    pivot
+}
+
+pub fn structural_isolation_4bit() -> IsolationStats {
+    const SIZE: usize = 1 << 16;
+    const N_OUT: usize = 16; // = input bits = output bits for 4-bit chi
+
+    // Build truth tables and ANFs for each output bit.
+    let mut output_tt: Vec<Vec<u8>> = (0..N_OUT).map(|_| vec![0u8; SIZE]).collect();
+    for input in 0u16..=0xFFFF {
+        let out = chi4(input);
+        for bit in 0..N_OUT {
+            output_tt[bit][input as usize] = ((out >> bit) & 1) as u8;
+        }
+    }
+    let anfs: Vec<Vec<u8>> = output_tt.iter().map(|tt| mobius_transform(tt)).collect();
+
+    // Enumerate degree-2 monomial indices (popcount 2 in 16-bit index).
+    let d2_indices: Vec<usize> = (0..SIZE).filter(|&m| m.count_ones() == 2).collect();
+    let n_d2 = d2_indices.len(); // C(16,2) = 120 — fits in 2 × u64
+
+    // Build 16×120 coefficient matrix over GF(2).
+    // Row i has a 1 in column k iff the k-th degree-2 monomial appears in ANF_i.
+    let mut matrix: Vec<[u64; 2]> = vec![[0u64; 2]; N_OUT];
+    for (out_bit, anf) in anfs.iter().enumerate() {
+        for (col, &d2_idx) in d2_indices.iter().enumerate() {
+            if anf[d2_idx] == 1 {
+                matrix[out_bit][col / 64] |= 1u64 << (col % 64);
+            }
+        }
+    }
+
+    let rank = gf2_rank_small(&matrix, n_d2);
+    IsolationStats {
+        degree2_var_count: n_d2,
+        equation_count: N_OUT,
+        subsystem_rank: rank,
+        underdetermination_ratio: n_d2 as f64 / rank.max(1) as f64,
+    }
 }
 
 // Expose chi8 for use in the bench round-trip sanity check.
