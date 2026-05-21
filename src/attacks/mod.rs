@@ -1,3 +1,4 @@
+pub mod adaptive_transcript;
 pub mod annihilator;
 pub mod boomerang;
 pub mod deep_integral;
@@ -11,6 +12,7 @@ pub mod integral;
 pub mod jacobian;
 pub mod linear;
 pub mod mitm;
+pub mod multi_user_sponge;
 pub mod phi_symmetry;
 pub mod preimage;
 pub mod quantum_security;
@@ -1606,6 +1608,129 @@ mod tests {
             round2.is_spectrally_random,
             "round 2 spectral: max_|Z|={:.2} frac>3={:.3} max_walsh={:.2}",
             round2.max_abs_z, round2.frac_exceeds_3, round2.mean_max_walsh_coeff
+        );
+    }
+
+    // ── Phase 4A: Adaptive Transcript Adversary ───────────────────────────────
+
+    #[test]
+    fn adaptive_transcript_consistency_matches_theory() {
+        // Run the adaptive oracle experiment; the collision count must stay within
+        // the theoretical bound q_f × q_b / 2^c (ratio 0.1–10 for fair sampling).
+        let mut r = rng();
+        for strategy in &["sequential", "adaptive_max", "interleaved"] {
+            let result = adaptive_transcript::run_adaptive_oracle(
+                strategy, 16, 50, 50, &mut r
+            );
+            assert!(
+                result.matches_theory,
+                "strategy={strategy}: collision ratio={:.2} outside expected range \
+                 (expected={:.2}, observed={})",
+                result.ratio, result.theoretical_bound, result.transcript_collisions
+            );
+        }
+    }
+
+    #[test]
+    fn backtracking_adversary_cannot_reconstruct_state() {
+        let mut r = rng();
+        let result = adaptive_transcript::analyze_backtracking(16, 100, 200, &mut r);
+        // Within the birthday bound means no unexpected amplification.
+        assert!(
+            result.within_birthday_bound,
+            "backtracking collisions out of bound: successful={} expected={:.2} ratio={:.2}",
+            result.successful_guesses, result.expected_successes, result.ratio
+        );
+        // expected_successes must be small (200 / (65536 - 100) ≈ 0.003).
+        assert!(
+            result.expected_successes < 0.1,
+            "expected backtrack successes too high: {:.4}",
+            result.expected_successes
+        );
+    }
+
+    #[test]
+    fn partial_state_reconstruction_entropy_holds() {
+        let result = adaptive_transcript::analyze_partial_reconstruction(16);
+        // Find the 50% sample (frac_revealed ≈ 0.50).
+        let idx = result.frac_revealed.iter()
+            .position(|&f| f >= 0.49)
+            .expect("must have a ≥50% fraction entry");
+        let remaining = result.remaining_entropy[idx];
+        assert!(
+            remaining > 4.0,
+            "remaining entropy too low at 50% observation: {:.1} bits",
+            remaining
+        );
+        // c=512 projection at 50% must be enormous (well above 128 bits).
+        let proj512 = result.projected_512_remaining[idx];
+        assert!(
+            proj512 > 128.0,
+            "c=512 half-observation projected entropy too low: {:.1}",
+            proj512
+        );
+    }
+
+    #[test]
+    fn transcript_adversary_report_all_pass() {
+        let mut r = rng();
+        let report = adaptive_transcript::run_transcript_adversary(200, &mut r);
+        assert!(
+            report.all_match_theory,
+            "transcript adversary: at least one sub-check failed"
+        );
+        // The c=512 inconsistency probability must be at most 2^{-256}.
+        assert!(
+            report.c512_inconsistency_log2 <= -256.0,
+            "c=512 inconsistency log2={:.1} (should be ≤ -256)",
+            report.c512_inconsistency_log2
+        );
+    }
+
+    // ── Phase 4B: Multi-User Adversarial Scheduling ───────────────────────────
+
+    #[test]
+    fn multi_user_no_transcript_merging() {
+        let mut r = rng();
+        let result = multi_user_sponge::analyze_transcript_merge(32, 10, 16, &mut r);
+        assert!(
+            result.no_transcript_merging,
+            "transcript merging detected: cross_collisions={} expected={:.2}",
+            result.cross_user_collisions, result.expected_cross_collisions
+        );
+        assert!(result.states_are_independent, "states must be independent");
+    }
+
+    #[test]
+    fn multi_user_collision_amplification_bounded() {
+        // With 2^8 users and 2^8 queries each, the degradation must be 2×8=16 bits.
+        let result = multi_user_sponge::analyze_collision_amplification(8, 8, 16);
+        assert_eq!(
+            result.degradation_bits as u32, 16,
+            "collision amplification degradation should be 2×log2(T)=16, got {:.1}",
+            result.degradation_bits
+        );
+    }
+
+    #[test]
+    fn multi_user_no_cross_user_leakage() {
+        let result = multi_user_sponge::analyze_cross_user_leakage(64, 16, 100);
+        assert_eq!(result.capacity_bits_leaked, 0, "capacity must not leak");
+        assert!(result.no_leakage, "leakage flag must be false");
+    }
+
+    #[test]
+    fn multi_user_stress_all_pass() {
+        let mut r = rng();
+        let report = multi_user_sponge::run_multi_user_stress(16, 50, &mut r);
+        assert!(
+            report.all_pass,
+            "multi-user stress: at least one sub-check failed"
+        );
+        assert!(
+            report.c512_advantage_log2 < -128.0,
+            "c=512 multi-user advantage={:.1} (should be < -128)",
+            report.c512_advantage_log2
         );
     }
 }

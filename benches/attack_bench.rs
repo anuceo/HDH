@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, rotational_xor, sat, spectral_sym, sponge, sponge_indiff, sponge_proof, truncated};
+use hdh::attacks::{adaptive_transcript, annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, multi_user_sponge, phi_symmetry, preimage, quantum_security, rotational_xor, sat, spectral_sym, sponge, sponge_indiff, sponge_proof, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 72;
+    let total = 76;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -1208,6 +1208,70 @@ fn main() {
     let r2_spec = sweep_spec.iter().find(|e| e.rounds == 2).unwrap();
     println!("  Round 2: spectrally_random={}", r2_spec.is_spectrally_random);
     println!("  Φ destroys rotational and spectral symmetry: confirmed by round 2.");
+
+    // ── 73. Adaptive transcript adversary ────────────────────────────────────
+    section(73, total, "Phase 4A: Adaptive Transcript Adversary  (c=16 toy)");
+
+    for strategy in &["sequential", "adaptive_max", "interleaved"] {
+        let r = adaptive_transcript::run_adaptive_oracle(strategy, 16, 100, 100, &mut rng);
+        println!("  strategy={strategy:<12} collisions={:>3}  expected={:.1}  ratio={:.2}  matches={}",
+            r.transcript_collisions, r.theoretical_bound, r.ratio, r.matches_theory);
+    }
+    let bt = adaptive_transcript::analyze_backtracking(16, 200, 5000, &mut rng);
+    println!("  Backtrack  observed={} guesses={}  expected={:.3}  within_bound={}",
+        bt.n_observed, bt.successful_guesses, bt.expected_successes, bt.within_birthday_bound);
+    let pr = adaptive_transcript::analyze_partial_reconstruction(16);
+    let idx50 = pr.frac_revealed.iter().position(|&f| f >= 0.49).unwrap_or(0);
+    println!("  PartialRecon @50%: remaining_entropy={:.1} bits  c512_proj={:.0} bits",
+        pr.remaining_entropy[idx50], pr.projected_512_remaining[idx50]);
+    let el = adaptive_transcript::compute_entropy_leakage(16);
+    println!("  EntropyLeakage: per_query={:.2e}  queries_for_1bit=2^{:.0}",
+        el.per_query_leakage_bits, el.queries_for_1bit_log2);
+    let report = adaptive_transcript::run_transcript_adversary(200, &mut rng);
+    println!("  Full report: all_match_theory={}  c512_inconsistency_log2={:.0}",
+        report.all_match_theory, report.c512_inconsistency_log2);
+
+    // ── 74. Schedule sweep ────────────────────────────────────────────────────
+    section(74, total, "Phase 4A: Query-Schedule Sweep  (varying qf/qb splits)");
+
+    println!("  {:>8} {:>8} {:>12} {:>12} {:>8}", "qf", "qb", "collisions", "expected", "ratio");
+    let schedule = adaptive_transcript::sweep_query_schedules(400, &mut rng);
+    for e in &schedule {
+        println!("  {:>8} {:>8} {:>12} {:>12.1} {:>8.2}",
+            e.n_forward, e.n_backward, e.transcript_collisions,
+            e.theoretical_bound, e.ratio);
+    }
+
+    // ── 75. Multi-user: transcript merge & collision amplification ────────────
+    section(75, total, "Phase 4B: Multi-User Transcript Merge & Collision Amplification");
+
+    let merge = multi_user_sponge::analyze_transcript_merge(64, 20, 16, &mut rng);
+    println!("  Transcript merge: users={}  cross_collisions={}  expected={:.2}  ok={}",
+        merge.n_users, merge.cross_user_collisions,
+        merge.expected_cross_collisions, merge.no_transcript_merging);
+
+    for (t_log2, q_log2) in &[(4u32, 8u32), (8, 8), (16, 8), (20, 8)] {
+        let amp = multi_user_sponge::analyze_collision_amplification(*t_log2, *q_log2, 16);
+        println!("  Amplif: T=2^{t_log2:>2}  q=2^{q_log2}  sec_bits={:.1}  degrad={:.0}",
+            amp.security_bits, amp.degradation_bits);
+    }
+
+    // ── 76. Multi-user: leakage & full stress report ──────────────────────────
+    section(76, total, "Phase 4B: Multi-User Leakage & Stress Report  (c=16 toy)");
+
+    let leak = multi_user_sponge::analyze_cross_user_leakage(64, 16, 100);
+    println!("  Cross-user leakage: capacity_leaked={} bits  no_leakage={}",
+        leak.capacity_bits_leaked, leak.no_leakage);
+    println!("  Guess probability: 2^{:.1}  sound_128={}  sound_256={}",
+        leak.guess_probability_log2, leak.is_sound_128bit, leak.is_sound_256bit);
+
+    let stress = multi_user_sponge::run_multi_user_stress(16, 50, &mut rng);
+    println!("  Stress report: all_pass={}  c512_advantage_log2={:.1}",
+        stress.all_pass, stress.c512_advantage_log2);
+    println!("  Joint entropy: total_entries={}  collisions={}  within_bound={}",
+        stress.entropy.total_transcript_entries,
+        stress.entropy.joint_birthday_collisions,
+        stress.entropy.within_bound);
 
     println!("\n=== Attack harness complete ===");
 }

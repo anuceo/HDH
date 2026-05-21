@@ -20,7 +20,6 @@
 /// 5. CapacityMinimumAnalysis – proves c=512 is the correct operating point.
 
 use rand::Rng;
-use std::collections::HashMap;
 
 // ── 1. TranscriptSimulator ───────────────────────────────────────────────────
 
