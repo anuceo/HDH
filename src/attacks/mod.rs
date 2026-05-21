@@ -1,27 +1,19 @@
 pub mod adaptive_transcript;
 pub mod annihilator;
 pub mod boomerang;
-pub mod deep_integral;
 pub mod differential;
 pub mod distinguisher;
-pub mod gpu_algebraic;
 pub mod groebner_sim;
-pub mod hybrid;
 pub mod hybrid_sat_gb;
 pub mod integral;
-pub mod jacobian;
-pub mod linear;
 pub mod mitm;
 pub mod multi_user_sponge;
-pub mod phi_symmetry;
 pub mod preimage;
 pub mod quantum_security;
 pub mod rotational_xor;
 pub mod sat;
 pub mod spectral_sym;
 pub mod sponge;
-pub mod sponge_indiff;
-pub mod sponge_proof;
 pub mod truncated;
 
 #[cfg(test)]
@@ -62,7 +54,7 @@ mod tests {
     #[test]
     fn linear_bias_is_negligible() {
         let mut r = rng();
-        let stats = linear::sample_linear_bias(50, 20_000, &mut r);
+        let stats = differential::sample_linear_bias(50, 20_000, &mut r);
         assert!(
             stats.max_bias < 0.05,
             "linear bias max={:.4} — exploitable linear approximation exists",
@@ -101,7 +93,7 @@ mod tests {
     #[test]
     fn jacobian_rank_near_full() {
         let mut r = rng();
-        let stats = jacobian::analyze_jacobian_rank(8, &mut r);
+        let stats = differential::analyze_jacobian_rank(8, &mut r);
         // Allow a small deficit (e.g. if an input word is pathologically small)
         // but require ≥ 78% of the theoretical 256-rank in the worst case.
         assert!(
@@ -307,7 +299,7 @@ mod tests {
     #[test]
     fn difflin_bias_is_negligible() {
         let mut r = rng();
-        let stats = hybrid::sample_difflin_bias(50, 20_000, &mut r);
+        let stats = boomerang::sample_difflin_bias(50, 20_000, &mut r);
         assert!(
             stats.max_bias < 0.02,
             "differential-linear max bias {:.4} — possible hybrid shortcut",
@@ -324,7 +316,7 @@ mod tests {
     #[test]
     fn second_order_differential_unbiased() {
         let mut r = rng();
-        let stats = hybrid::test_second_order_differential(30, 10_000, &mut r);
+        let stats = boomerang::test_second_order_differential(30, 10_000, &mut r);
         assert!(
             stats.max_bias < 0.02,
             "second-order differential parity bias {:.4} — boomerang structure possible",
@@ -364,7 +356,7 @@ mod tests {
     #[test]
     fn phi_has_no_rotational_symmetry() {
         let mut r = rng();
-        let stats = phi_symmetry::test_rotational_symmetry(200, &mut r);
+        let stats = rotational_xor::test_rotational_symmetry(200, &mut r);
         assert!(
             stats.max_exact_equivariance == 0.0,
             "φ appears equivariant under some rotation: max exact match fraction = {:.6}",
@@ -381,7 +373,7 @@ mod tests {
     #[test]
     fn phi_output_xor_is_not_constant_for_fixed_shift() {
         let mut r = rng();
-        let stats = phi_symmetry::test_affine_shift(20, 100, &mut r);
+        let stats = rotational_xor::test_affine_shift(20, 100, &mut r);
         assert!(
             stats.max_constant_output_frac < 0.1,
             "φ(S⊕C)⊕φ(S) is constant for {:.1}% of inputs — affine shift symmetry detected",
@@ -811,7 +803,7 @@ mod tests {
         // At c=512, a balanced adversary with 2^126 queries of each type (forward,
         // backward, hash) has q_eff ≈ 3×2^126 ≈ 2^127.6, giving
         // advantage ≤ 2^{255.2}/2^512 = 2^{−256.8}.  Security > 256 bits.
-        let bound = sponge_indiff::compute_indiff_bound(sponge_indiff::IndiffGameParams {
+        let bound = sponge::compute_indiff_bound(sponge::IndiffGameParams {
             state_bits: 6400,
             rate_bits: 5888,
             capacity_bits: 512,
@@ -831,7 +823,7 @@ mod tests {
     fn indiff_simulator_reliable_at_128bit_budget() {
         // Simulator failure probability ≤ q_f × q_b / 2^c.
         // At c=512, q_f = q_b = 2^128: P(fail) ≤ 2^{256}/2^{512} = 2^{−256} ≪ 2^{−128}.
-        let sc = sponge_indiff::simulator_consistency(512, 128, 128);
+        let sc = sponge::simulator_consistency(512, 128, 128);
         assert!(
             sc.is_reliable_128bit,
             "simulator failure prob 2^{:.1} exceeds 2^{{-128}} — consistency not guaranteed",
@@ -843,7 +835,7 @@ mod tests {
     fn indiff_query_budget_sweep_has_large_256bit_range() {
         // With c=512, security drops below 256 bits only when q_total > 2^{128}.
         // The sweep should show max_q_for_256bit_log2 >= 128.
-        let sweep = sponge_indiff::sweep_query_budgets(6400, 5888);
+        let sweep = sponge::sweep_query_budgets(6400, 5888);
         assert!(
             sweep.max_q_for_256bit_log2 >= 128,
             "max query budget for 256-bit security is only 2^{} — less than 2^128",
@@ -855,7 +847,7 @@ mod tests {
     fn indiff_hash_proof_all_256bit_properties() {
         // Assemble the full proof for c=512, r=5888, output=512 bits.
         // All four standard properties must hold at ≥ 256 bits.
-        let proof = sponge_indiff::assemble_hash_proof(6400, 5888, 512);
+        let proof = sponge::assemble_hash_proof(6400, 5888, 512);
         assert!(
             proof.all_256bit_properties_hold,
             "not all 256-bit security properties hold: \
@@ -881,7 +873,7 @@ mod tests {
     fn algebraic_two_round_xl_is_infeasible() {
         // 2-round HDH: n=6400 vars, eq_degree > 4 (use 8 as conservative estimate).
         // XL complexity must be >> 2^{256} (far outside GPU reach).
-        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 8);
+        let sd = groebner_sim::estimate_solving_degree(6400, 6400, 8);
         assert!(
             sd.xl_time_log2 > 256.0,
             "2-round XL time 2^{:.0} < 2^{{256}} — attack may be feasible",
@@ -893,7 +885,7 @@ mod tests {
     fn algebraic_solving_degree_exceeds_eq_degree_for_large_systems() {
         // For a square system (n=m=6400) of degree-3 equations, the XL solving
         // degree must be >> 3 (the underdetermination forces it much higher).
-        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 3);
+        let sd = groebner_sim::estimate_solving_degree(6400, 6400, 3);
         assert!(
             sd.d_xl > 3,
             "1-round solving degree {} = eq_degree 3 — underdetermination not modelled",
@@ -910,8 +902,8 @@ mod tests {
     fn algebraic_hybrid_does_not_break_security() {
         // Hybrid attack on 2-round HDH (n=6400, d_XL from solving-degree model).
         // Even the optimal variable-fixing split must leave complexity > 2^{128}.
-        let sd = gpu_algebraic::estimate_solving_degree(6400, 6400, 8);
-        let hyb = gpu_algebraic::hybrid_attack_optimum(6400, sd.d_xl);
+        let sd = groebner_sim::estimate_solving_degree(6400, 6400, 8);
+        let hyb = groebner_sim::hybrid_attack_optimum(6400, sd.d_xl);
         assert!(
             hyb.total_log2 > 128.0,
             "hybrid attack total complexity 2^{:.1} ≤ 2^{{128}} — feasible attack found",
@@ -922,7 +914,7 @@ mod tests {
     #[test]
     fn algebraic_scale_sweep_shows_round_2_infeasible() {
         // The scale sweep's 6400-bit 2-round entry must show best_known > 2^{256}.
-        let sweep = gpu_algebraic::algebraic_scale_sweep();
+        let sweep = groebner_sim::algebraic_scale_sweep();
         let entry_2r = sweep.entries.iter()
             .find(|e| e.description.contains("2-round"))
             .expect("2-round entry must be present in scale sweep");
@@ -947,7 +939,7 @@ mod tests {
         // Toy simulator with c=16 bits, 1000 queries (500 forward + 500 backward).
         // Expected collisions ≈ 500×500/65536 ≈ 3.8.  Must be within 3× of expected.
         let mut r = crate::attacks::tests::rng();
-        let res = sponge_proof::run_transcript_simulation(1000, 16, &mut r);
+        let res = sponge::run_transcript_simulation(1000, 16, &mut r);
         assert!(
             res.within_3x_of_expected,
             "simulator collisions {} too far from expected {:.1} (ratio={:.2})",
@@ -960,7 +952,7 @@ mod tests {
         // At c=32 bits (4×10^9 range), 1000 queries → expected collisions ≈ 5.8×10^{-5}.
         // We expect exactly 0 collisions observed in nearly every run.
         let mut r = crate::attacks::tests::rng();
-        let res = sponge_proof::run_transcript_simulation(1000, 28, &mut r);
+        let res = sponge::run_transcript_simulation(1000, 28, &mut r);
         // At c=28: expected ≈ 500×500/2^28 ≈ 0.00093.  Almost certainly 0 collisions.
         assert!(
             res.collisions_observed <= 2,
@@ -972,7 +964,7 @@ mod tests {
     #[test]
     fn proof_structure_all_lemmas_hold_at_c512_q128() {
         // At c=512, q=2^128: all lemmas and the theorem must hold.
-        let proof = sponge_proof::build_proof_structure(6400, 5888, 128);
+        let proof = sponge::build_proof_structure(6400, 5888, 128);
         assert!(proof.lemma_completeness.holds, "completeness lemma failed");
         assert!(proof.lemma_consistency.holds,  "consistency lemma failed");
         assert!(proof.lemma_closeness.holds,    "closeness lemma failed");
@@ -989,7 +981,7 @@ mod tests {
     fn concrete_reduction_is_non_trivial_at_c512() {
         // If D has 2^{-10} advantage and c=512, q=2^128: gap = 2^{-256} ≪ 2^{-10}.
         // The reduction to permutation distinguisher must be non-trivial.
-        let red = sponge_proof::compute_concrete_reduction(512, 128, -10.0);
+        let red = sponge::compute_concrete_reduction(512, 128, -10.0);
         assert!(
             red.is_non_trivial,
             "reduction is vacuous: permutation advantage = 2^{:.1}",
@@ -1007,7 +999,7 @@ mod tests {
     fn multi_instance_security_holds_for_large_deployments() {
         // 2^{32} instances × 2^{64} queries each: total budget = 2^{96}.
         // At c=512: advantage ≤ 2^{192} / 2^{512} = 2^{−320} → 320 bits secure.
-        let mi = sponge_proof::multi_instance_security(6400, 512, 32, 64);
+        let mi = sponge::multi_instance_security(6400, 512, 32, 64);
         assert!(
             mi.meets_256bit,
             "multi-instance (T=2^32, q=2^64) security {:.1} bits < 256",
@@ -1019,7 +1011,7 @@ mod tests {
     fn capacity_minimum_analysis_confirms_c512_is_right() {
         // min_c for 256-bit classical collision = 512.  HDH's c=512 meets exactly.
         // min_c for 128-bit quantum collision (BHT) = 384. c=512 > 384. ✓
-        let analysis = sponge_proof::analyze_capacity_minimum(6400);
+        let analysis = sponge::analyze_capacity_minimum(6400);
         assert_eq!(
             analysis.min_c_classical_256bit, 512,
             "min capacity for 256-bit classical collision should be 512, got {}",
@@ -1135,7 +1127,7 @@ mod tests {
         // (integral.rs empirically observes ≥ 70% of dim-4 cubes zero after
         //  1 round; 93% is typical.)
         let mut rng = rng();
-        let stats = deep_integral::test_affine_subspace(1, 4, 60, &mut rng);
+        let stats = integral::test_affine_subspace(1, 4, 60, &mut rng);
         assert!(
             stats.zero_sum_fraction > 0.5,
             "1-round dim-4: expected >50% zero XOR sums (degree ≤ 3 → D^4 F=0), got {:.2}",
@@ -1155,7 +1147,7 @@ mod tests {
         // zero_sum_fraction should be < 0.5 and hw_mean should be substantially
         // above zero (XOR sums are no longer the all-zero vector).
         let mut rng = rng();
-        let stats = deep_integral::test_affine_subspace(2, 4, 60, &mut rng);
+        let stats = integral::test_affine_subspace(2, 4, 60, &mut rng);
         // zero_sum_fraction should have collapsed (integral structure gone).
         assert!(
             stats.zero_sum_fraction < 0.5,
@@ -1182,7 +1174,7 @@ mod tests {
         // integral_start_dim = Some(4): the minimum dimension where zero_sum_fraction
         // first exceeds 0.5.  degree_upper_bound = 3.
         let mut rng = rng();
-        let result = deep_integral::find_integral_dimension(1, 6, 50, &mut rng);
+        let result = integral::find_integral_dimension(1, 6, 50, &mut rng);
         // integral_start_dim must be 4 or 5 (allowing one extra if the seed
         // gives a slightly unlucky batch, but definitely found within max_dim=6).
         assert!(
@@ -1202,7 +1194,7 @@ mod tests {
         );
 
         // For 2-round HDH, degree > 4: no structured dim should appear within max_dim=6.
-        let result2 = deep_integral::find_integral_dimension(2, 6, 50, &mut rng);
+        let result2 = integral::find_integral_dimension(2, 6, 50, &mut rng);
         assert!(
             result2.integral_start_dim.is_none(),
             "2-round: integral_start_dim should be None (degree > 6), got {:?}",
@@ -1218,7 +1210,7 @@ mod tests {
         //
         // annihilation_order should be Some(4).
         let mut rng = rng();
-        let collapse = deep_integral::measure_derivative_collapse(1, 5, 40, &mut rng);
+        let collapse = integral::measure_derivative_collapse(1, 5, 40, &mut rng);
         assert!(!collapse.per_order.is_empty());
 
         // Order 4 should be annihilated (zero_frac ≥ 0.9).
@@ -1249,7 +1241,7 @@ mod tests {
         // at round 1 (zero_sum_fraction ≥ 0.5) and collapse at round 2.
         // Confirm closure_round = Some(2).
         let mut rng = rng();
-        let sweep = deep_integral::sweep_integral_persistence(3, &[4], 40, &mut rng);
+        let sweep = integral::sweep_integral_persistence(3, &[4], 40, &mut rng);
         assert!(
             sweep.closure_round.is_some(),
             "closure_round should be detected within 3 rounds"

@@ -1,4 +1,4 @@
-use hdh::attacks::{adaptive_transcript, annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, multi_user_sponge, phi_symmetry, preimage, quantum_security, rotational_xor, sat, spectral_sym, sponge, sponge_indiff, sponge_proof, truncated};
+use hdh::attacks::{adaptive_transcript, annihilator, boomerang, differential, distinguisher, groebner_sim, hybrid_sat_gb, integral, mitm, multi_user_sponge, preimage, quantum_security, rotational_xor, sat, spectral_sym, sponge, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -36,7 +36,7 @@ fn main() {
     // ── 2. Linear bias ──────────────────────────────────────────────────────
     section(2, total, "Linear Bias / Walsh Coefficients  (full chi_lane, empirical)");
 
-    let ls = linear::sample_linear_bias(100, 50_000, &mut rng);
+    let ls = differential::sample_linear_bias(100, 50_000, &mut rng);
     println!("  Masks tested:      {}", ls.masks_tested);
     println!("  Samples per mask:  {}", ls.samples_per_mask);
     println!("  Max |bias|:        {:.6}", ls.max_bias);
@@ -49,7 +49,7 @@ fn main() {
     // ── 3. Jacobian rank ────────────────────────────────────────────────────
     section(3, total, "GF(2) Jacobian Rank  (64-bit chi_lane, 8 random points)");
 
-    let js = jacobian::analyze_jacobian_rank(8, &mut rng);
+    let js = differential::analyze_jacobian_rank(8, &mut rng);
     println!("  Points tested:          {}", js.points_tested);
     println!("  Theoretical max rank:   {}", js.max_theoretical_rank);
     println!("  Min rank observed:      {}", js.min_rank);
@@ -145,7 +145,7 @@ fn main() {
     // ── 8. Differential-linear hybrid ─────────────────────────────────────────
     section(8, total, "Differential-Linear Hybrid  (64-bit χ lane, 100 masks × 50k samples)");
 
-    let dl = hybrid::sample_difflin_bias(100, 50_000, &mut rng);
+    let dl = boomerang::sample_difflin_bias(100, 50_000, &mut rng);
     println!("  Masks tested:        {}", dl.masks_tested);
     println!("  Samples per mask:    {}", dl.samples_per_mask);
     println!("  Max |bias|:          {:.6}", dl.max_bias);
@@ -158,7 +158,7 @@ fn main() {
     // ── 9. Second-order / boomerang-rectangle differential ────────────────────
     section(9, total, "Second-Order Differential  (boomerang-rectangle test, 50 triples × 20k)");
 
-    let so = hybrid::test_second_order_differential(50, 20_000, &mut rng);
+    let so = boomerang::test_second_order_differential(50, 20_000, &mut rng);
     println!("  Triples (Δ₀,Δ₁,α):  {}", so.triples_tested);
     println!("  Samples per triple:  {}", so.samples_per_triple);
     println!("  Max |bias|:          {:.6}", so.max_bias);
@@ -193,7 +193,7 @@ fn main() {
     // ── 11. Φ rotational symmetry ─────────────────────────────────────────────
     section(11, total, "Φ Rotational Symmetry  (1000 random states, 24 rotations)");
 
-    let ps = phi_symmetry::test_rotational_symmetry(1_000, &mut rng);
+    let ps = rotational_xor::test_rotational_symmetry(1_000, &mut rng);
     println!("  Rotations tested:         {}", ps.rotations_tested);
     println!("  Samples per rotation:     {}", ps.samples_per_rotation);
     println!("  Max exact equivariance:   {:.6}  (expect 0)", ps.max_exact_equivariance);
@@ -211,7 +211,7 @@ fn main() {
     // ── 12. Φ affine shift test ───────────────────────────────────────────────
     section(12, total, "Φ Affine Shift Test  (25 random constants, 200 samples each)");
 
-    let af = phi_symmetry::test_affine_shift(25, 200, &mut rng);
+    let af = rotational_xor::test_affine_shift(25, 200, &mut rng);
     println!("  Constant shifts tested:   {}", af.shifts_tested);
     println!("  Samples per shift:        {}", af.samples_per_shift);
     println!("  Max constant-output frac: {:.4}  (expect ≈ 0 for state-dependent routing)",
@@ -559,7 +559,7 @@ fn main() {
     println!("  {:>10}  {:>14}  {:>14}  {:>8}  {:>8}",
         "q_each_log2", "q_eff_log2", "adv_log2", "≥128b?", "≥256b?");
     for q in [80u32, 96, 112, 120, 126, 128, 132] {
-        let b = sponge_indiff::compute_indiff_bound(sponge_indiff::IndiffGameParams {
+        let b = sponge::compute_indiff_bound(sponge::IndiffGameParams {
             state_bits: 6400, rate_bits: 5888, capacity_bits: 512,
             q_forward_log2: q, q_backward_log2: q, q_hash_log2: q,
             output_blocks: 1,
@@ -576,7 +576,7 @@ fn main() {
     println!("  {:>12}  {:>14}  {:>12}  {:>12}",
         "q_fwd_log2", "fail_prob_log2", "reliable_128?", "reliable_256?");
     for qf in [64u32, 96, 112, 128, 160, 192, 256] {
-        let sc = sponge_indiff::simulator_consistency(512, qf, qf);
+        let sc = sponge::simulator_consistency(512, qf, qf);
         println!("  {:>12}  {:>14.1}  {:>13}  {:>12}",
             qf, sc.failure_prob_log2,
             sc.is_reliable_128bit, sc.is_reliable_256bit);
@@ -587,7 +587,7 @@ fn main() {
     // ── 34. Query budget sweep ────────────────────────────────────────────────
     section(34, total, "Query Budget Sweep  (r=5888, c=512, full q range)");
 
-    let qs = sponge_indiff::sweep_query_budgets(6400, 5888);
+    let qs = sponge::sweep_query_budgets(6400, 5888);
     println!("  {:>12}  {:>14}  {:>14}  {:>8}  {:>8}",
         "q_total_log2", "adv_log2", "security_bits", "≥128b?", "≥256b?");
     for e in &qs.entries {
@@ -601,7 +601,7 @@ fn main() {
     // ── 35. Padding domain separation ────────────────────────────────────────
     section(35, total, "Padding Domain Separation  (pad10*1, r=5888 bits)");
 
-    let pad = sponge_indiff::analyze_padding(5888);
+    let pad = sponge::analyze_padding(5888);
     println!("  Rate:                 {} bits = {} bytes", pad.rate_bits, pad.rate_bytes);
     println!("  Empty-msg padding:    0x{:02x} … 0x{:02x}  ({} bytes total)",
         pad.empty_message_padded[0],
@@ -618,7 +618,7 @@ fn main() {
     // ── 36. Assembled hash proof ──────────────────────────────────────────────
     section(36, total, "Sponge Hash Proof  (assembled, r=5888, c=512, output=512 bits)");
 
-    let proof = sponge_indiff::assemble_hash_proof(6400, 5888, 512);
+    let proof = sponge::assemble_hash_proof(6400, 5888, 512);
     println!("  Indifferentiability:      {:.0} bits  (max q = 2^{{c/2}} = 2^256)", proof.indiff_security_bits);
     println!("  Collision resistance:     {:.0} bits  (c/2)", proof.collision_security_bits);
     println!("  Preimage resistance:      {:.0} bits  (min(c/2, output))", proof.preimage_security_bits);
@@ -647,7 +647,7 @@ fn main() {
         ("6400b 2-round",     6400,     8),
         ("6400b 4-round",     6400,    81),
     ] {
-        let sd = gpu_algebraic::estimate_solving_degree(n, n, d_eq);
+        let sd = groebner_sim::estimate_solving_degree(n, n, d_eq);
         println!("  {:>20}  {:>6}  {:>8}  {:>8}  {:>14.1}  {:>12.1}",
             desc, n, d_eq, sd.d_xl, sd.macaulay_log2, sd.xl_time_log2);
     }
@@ -659,9 +659,9 @@ fn main() {
 
     println!("  {:>20}  {:>6}  {:>8}  {:>8}  {:>12}  {:>12}  {:>12}",
         "System", "n", "d_XL", "opt k", "search log2", "GB log2", "total log2");
-    let sweep = gpu_algebraic::algebraic_scale_sweep();
+    let sweep = groebner_sim::algebraic_scale_sweep();
     for e in &sweep.entries {
-        let hyb = gpu_algebraic::hybrid_attack_optimum(e.n_vars, e.xl_solving_degree);
+        let hyb = groebner_sim::hybrid_attack_optimum(e.n_vars, e.xl_solving_degree);
         println!("  {:>20}  {:>6}  {:>8}  {:>8}  {:>12.1}  {:>12.1}  {:>12.1}",
             &e.description[..e.description.len().min(20)],
             e.n_vars, e.xl_solving_degree,
@@ -689,7 +689,7 @@ fn main() {
     println!("  {:>14}  {:>26}  {:>12}  {:>12}  {:>10}",
         "Complexity log2", "Hardware", "Time log2 s", "Feasible/yr?", "Feas/univ?");
     for &complexity in &[64.0f64, 80.0, 96.0, 120.0, 128.0, 200.0, 256.0, 512.0] {
-        let tbl = gpu_algebraic::gpu_feasibility_table(complexity);
+        let tbl = groebner_sim::gpu_feasibility_table(complexity);
         for e in &tbl.entries {
             println!("  {:>14.0}  {:>26}  {:>12.1}  {:>12}  {:>10}",
                 complexity, e.hardware_description,
@@ -705,9 +705,9 @@ fn main() {
     // ── 41. Algebraic security summary ───────────────────────────────────────
     section(41, total, "Algebraic Security Summary  (all attack families vs 2-round HDH)");
 
-    let sd2r = gpu_algebraic::estimate_solving_degree(6400, 6400, 8);
-    let hyb2r = gpu_algebraic::hybrid_attack_optimum(6400, sd2r.d_xl);
-    let tbl2r = gpu_algebraic::gpu_feasibility_table(hyb2r.total_log2);
+    let sd2r = groebner_sim::estimate_solving_degree(6400, 6400, 8);
+    let hyb2r = groebner_sim::hybrid_attack_optimum(6400, sd2r.d_xl);
+    let tbl2r = groebner_sim::gpu_feasibility_table(hyb2r.total_log2);
     println!("  2-round HDH (n=6400, d_eq>4, d_XL={}):", sd2r.d_xl);
     println!("    XL complexity:         2^{:.0}", sd2r.xl_time_log2);
     println!("    Memory requirement:    2^{:.0} bits", sd2r.xl_memory_log2);
@@ -731,7 +731,7 @@ fn main() {
     println!("  {:>12}  {:>8}  {:>8}  {:>10}  {:>10}  {:>8}  {:>8}",
         "capacity_bits", "n_fwd", "n_bwd", "collisions", "expected", "ratio", "≤3×exp?");
     for c_bits in [8usize, 12, 16, 20, 24] {
-        let res = sponge_proof::run_transcript_simulation(1_000, c_bits, &mut rng);
+        let res = sponge::run_transcript_simulation(1_000, c_bits, &mut rng);
         println!("  {:>12}  {:>8}  {:>8}  {:>10}  {:>10.2}  {:>8.3}  {:>8}",
             c_bits, res.n_forward, res.n_backward,
             res.collisions_observed, res.expected_collisions,
@@ -744,7 +744,7 @@ fn main() {
     // ── 43. Proof structure: lemmas and theorem ───────────────────────────────
     section(43, total, "Indiff Proof Structure  (lemmas + theorem at c=512, q=2^{{128}})");
 
-    let proof = sponge_proof::build_proof_structure(6400, 5888, 128);
+    let proof = sponge::build_proof_structure(6400, 5888, 128);
     for step in [
         &proof.lemma_completeness,
         &proof.lemma_consistency,
@@ -763,7 +763,7 @@ fn main() {
     println!("  {:>14}  {:>10}  {:>16}  {:>16}  {:>10}  {:>8}",
         "D advantage", "q_log2", "gap (q²/2^c)", "perm lb", "non-trivial?", "tight?");
     for d_adv_log2 in [-10.0f64, -20.0, -40.0, -80.0, -120.0] {
-        let red = sponge_proof::compute_concrete_reduction(512, 128, d_adv_log2);
+        let red = sponge::compute_concrete_reduction(512, 128, d_adv_log2);
         println!("  {:>14.0}  {:>10}  {:>16.1}  {:>16.1}  {:>10}  {:>8}",
             d_adv_log2, 128,
             red.reduction_gap_log2, red.permutation_advantage_lb_log2,
@@ -778,7 +778,7 @@ fn main() {
     println!("  {:>14}  {:>14}  {:>14}  {:>14}  {:>8}  {:>8}",
         "T (log2)", "q/user (log2)", "q_total (log2)", "security bits", "≥128b?", "≥256b?");
     for (t, q) in [(0u32,128u32),(16,96),(32,64),(48,48),(64,32),(96,16),(128,8)] {
-        let mi = sponge_proof::multi_instance_security(6400, 512, t, q);
+        let mi = sponge::multi_instance_security(6400, 512, t, q);
         println!("  {:>14}  {:>14}  {:>14.1}  {:>14.1}  {:>8}  {:>8}",
             t, q, mi.q_effective_log2, mi.security_bits,
             mi.meets_128bit, mi.meets_256bit);
@@ -789,7 +789,7 @@ fn main() {
     // ── 46. Capacity minimum analysis ─────────────────────────────────────────
     section(46, total, "Capacity Minimum Analysis  (why c=512 is the right choice)");
 
-    let cma = sponge_proof::analyze_capacity_minimum(6400);
+    let cma = sponge::analyze_capacity_minimum(6400);
     println!("  {:>8}  {:>8}  {:>10}  {:>12}  {:>10}  {:>12}  {:>14}",
         "c", "r", "throughput", "cl_col_bits", "q_col_bits", "cl_256b?", "q_128b?");
     for e in &cma.entries {
@@ -893,7 +893,7 @@ fn main() {
     println!("  {:>6}  {:>5}  {:>12}  {:>17}  {:>10}  {:>13}",
         "rounds", "dim", "zero_sum_fr", "balanced_bit_fr", "hw_mean", "hw_deficit%");
     for r in 1..=3usize {
-        let s = deep_integral::test_affine_subspace(r, 4, 40, &mut rng);
+        let s = integral::test_affine_subspace(r, 4, 40, &mut rng);
         println!("  {:>6}  {:>5}  {:>12.3}  {:>17.3}  {:>10.0}  {:>12.1}%",
             r, 4, s.zero_sum_fraction, s.balanced_bit_fraction,
             s.hw_mean, s.normalized_hw_deficit * 100.0);
@@ -908,7 +908,7 @@ fn main() {
     println!("  {:>6}  {:>6}  {:>20}  {:>15}  {:>14}",
         "rounds", "istart", "degree_upper_bound", "cube_annihil", "dim_fractions");
     for r in 1..=2usize {
-        let res = deep_integral::find_integral_dimension(r, 6, 40, &mut rng);
+        let res = integral::find_integral_dimension(r, 6, 40, &mut rng);
         let fracs: Vec<String> = res.dim_fractions.iter()
             .map(|f| format!("{:.2}", f)).collect();
         println!("  {:>6}  {:>6}  {:>20}  {:>14}  [{}]",
@@ -929,7 +929,7 @@ fn main() {
         println!("  Round {}:", r);
         println!("    {:>5}  {:>10}  {:>10}  {:>10}  {:>10}",
             "order", "zero_frac", "hw_mean", "hw_std", "entropy");
-        let col = deep_integral::measure_derivative_collapse(r, 5, 30, &mut rng);
+        let col = integral::measure_derivative_collapse(r, 5, 30, &mut rng);
         for (s, e) in col.per_order.iter().zip(col.derivative_entropy.iter()) {
             println!("    {:>5}  {:>10.3}  {:>10.0}  {:>10.0}  {:>10.3}",
                 s.order, s.zero_frac, s.hw_mean, s.hw_std, e);
@@ -942,7 +942,7 @@ fn main() {
     // ── 55. Integral persistence sweep  (rounds 1–4, dims 3–5) ───────────────
     section(55, total, "Deep Integral — Persistence Sweep  (rounds 1–4, dims 3–5)");
 
-    let psweep = deep_integral::sweep_integral_persistence(4, &[3, 4, 5], 30, &mut rng);
+    let psweep = integral::sweep_integral_persistence(4, &[3, 4, 5], 30, &mut rng);
     println!("  {:>6}  {:>4}  {:>12}  {:>17}  {:>14}",
         "rounds", "dim", "zero_sum_fr", "balanced_bit_fr", "integral_persists");
     for e in &psweep.entries {

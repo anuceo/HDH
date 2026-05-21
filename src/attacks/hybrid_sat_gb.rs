@@ -14,7 +14,7 @@
 ///   - No decomposable sub:   θ/Φ coupling prevents independent sub-problems.
 ///   - Chi isolation fails:   Φ routing is state-dependent past round 1.
 
-use crate::attacks::gpu_algebraic::{
+use crate::attacks::groebner_sim::{
     estimate_solving_degree, hybrid_attack_optimum,
 };
 
