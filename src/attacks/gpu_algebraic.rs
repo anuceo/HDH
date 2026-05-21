@@ -15,7 +15,7 @@
 ///   - GF(2) Jacobian rank ≈ 256 at every tested point (jacobian.rs).
 ///
 /// Five components:
-/// 1. XLComplexityModel   – XL/Gröbner complexity for parameterised systems.
+/// 1. XLComplexityModel   – XL/Gröbner complexity for parameterized systems.
 /// 2. HybridAttackModel   – optimal variable-fixing split.
 /// 3. SolvingDegreeModel  – estimates XL solving degree for square systems.
 /// 4. GpuFeasibility      – concrete GPU operations-per-second and wall time.
@@ -77,7 +77,7 @@ pub fn xl_complexity(params: MQSystemParams) -> XLComplexity {
 // ── 2. HybridAttackModel ─────────────────────────────────────────────────────
 
 /// Hybrid Gröbner attack: fix k variables exhaustively, then solve the remaining
-/// (n−k)-variable system.  Optimal k minimises:
+/// (n−k)-variable system.  Optimal k minimizes:
 ///   cost(k) = log2(2^k + C(n−k + d_XL, d_XL)^ω)
 ///           ≈ max(k, GB(n−k, d_XL))   when the two terms differ by > 1 bit.
 ///

@@ -113,7 +113,7 @@ pub struct AdaptiveOracleStats {
 /// strategy:
 ///   "sequential"   – all forwards first, then all backwards (uniform random targets).
 ///   "adaptive_max" – forwards first; backwards deliberately target already-seen
-///                    capacity parts (maximises collision probability).
+///                    capacity parts (maximizes collision probability).
 ///   "interleaved"  – alternating forward/backward.
 pub fn run_adaptive_oracle(
     strategy: &'static str,

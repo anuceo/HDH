@@ -116,10 +116,10 @@ pub struct RotationalDiffStats {
     pub hw_std: f64,
     pub expected_hw_random: f64,
     /// (hw_mean − expected) / expected.  Near 0 = random-like.
-    pub normalised_deviation: f64,
+    pub normalized_deviation: f64,
     /// Fraction of samples where HW < 0.1 × STATE_BITS (very low weight).
     pub frac_very_low_hw: f64,
-    /// |normalised_deviation| < 0.05.
+    /// |normalized_deviation| < 0.05.
     pub is_random_like: bool,
 }
 
@@ -153,7 +153,7 @@ pub fn test_rotational_diff(
     let hw_var  = (hw_sq / n) - hw_mean * hw_mean;
     let hw_std  = hw_var.max(0.0).sqrt();
     let expected = STATE_BITS as f64 / 2.0;
-    let normalised_deviation = (hw_mean - expected) / expected;
+    let normalized_deviation = (hw_mean - expected) / expected;
 
     RotationalDiffStats {
         rounds,
@@ -163,9 +163,9 @@ pub fn test_rotational_diff(
         hw_mean,
         hw_std,
         expected_hw_random: expected,
-        normalised_deviation,
+        normalized_deviation,
         frac_very_low_hw: very_low_count as f64 / n,
-        is_random_like: normalised_deviation.abs() < 0.05,
+        is_random_like: normalized_deviation.abs() < 0.05,
     }
 }
 
@@ -192,7 +192,7 @@ pub struct XorPreservationStats {
     pub consistency_score: f64,
     /// Fraction of (α, sample-pair) combinations where pairwise HW < threshold.
     pub frac_near_constant: f64,
-    /// |consistency_score| < 0.1 → random-like behaviour.
+    /// |consistency_score| < 0.1 → random-like behavior.
     pub is_random_like: bool,
 }
 
@@ -323,10 +323,10 @@ pub struct RotationalSweepEntry {
     pub rounds: usize,
     pub rotation_label: &'static str,
     pub rotation_amount: usize,
-    pub normalised_deviation: f64,
+    pub normalized_deviation: f64,
     pub consistency_score: f64,
     pub affine_score: f64,
-    /// True when all three tests show random-like behaviour.
+    /// True when all three tests show random-like behavior.
     pub is_fully_random: bool,
 }
 
@@ -355,7 +355,7 @@ pub fn sweep_rotational(
                 rounds: r,
                 rotation_label: label,
                 rotation_amount: amount,
-                normalised_deviation: diff.normalised_deviation,
+                normalized_deviation: diff.normalized_deviation,
                 consistency_score: xpres.consistency_score,
                 affine_score: aeq.affine_score,
                 is_fully_random: diff.is_random_like

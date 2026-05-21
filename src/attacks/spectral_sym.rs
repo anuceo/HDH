@@ -14,7 +14,7 @@
 ///    Pick a random affine subspace V = base + span{e_1,…,e_6} ⊂ GF(2)^n.
 ///    Evaluate f_b(x) = ⟨b, F(x)⟩ for all 2^6 = 64 points of V.
 ///    Compute the WHT of the ±1 encoding and record spectral statistics.
-///    For a random function: max coefficient ≈ 2.9 × sqrt(64) after normalisation.
+///    For a random function: max coefficient ≈ 2.9 × sqrt(64) after normalization.
 ///    Structured functions show outlier coefficients.
 ///
 /// Expected results:
@@ -108,7 +108,7 @@ fn random_combined_direction(rng: &mut impl Rng) -> State {
 
 /// Statistics from the sampling-based autocorrelation estimate.
 ///
-/// For each (α, b) pair, the normalised sum
+/// For each (α, b) pair, the normalized sum
 ///   Z = (1/√N) ∑_i (−1)^{⟨b, F(x_i)⊕F(x_i⊕α)⟩}
 /// should be N(0,1) for a flat Walsh spectrum.  Significant deviations
 /// indicate non-trivial autocorrelation (Walsh coefficients >> √N).
@@ -132,7 +132,7 @@ pub struct AutocorrStats {
     pub is_spectrally_flat: bool,
 }
 
-/// Estimate autocorrelation via the normalised Walsh sum for each (α, b) pair.
+/// Estimate autocorrelation via the normalized Walsh sum for each (α, b) pair.
 pub fn estimate_autocorrelation(
     rounds: usize,
     n_dirs: usize,
@@ -191,7 +191,7 @@ pub fn estimate_autocorrelation(
 ///
 /// For each random affine subspace V = {base ⊕ lin.comb.(e_0,…,e_5)},
 /// compute the 64-point WHT of the ±1 encoding of ⟨b, F(·)⟩|_V.
-/// After normalising by 1/sqrt(64), the maximum absolute coefficient
+/// After normalizing by 1/sqrt(64), the maximum absolute coefficient
 /// is distributed as the max of 64 iid |N(0,1)| under randomness,
 /// with expected value ≈ 2.9.  Persistent large values indicate
 /// spectral concentration on the subspace.
@@ -200,11 +200,11 @@ pub struct WalshSubspaceStats {
     pub rounds: usize,
     pub subspace_dim: usize,
     pub n_subspaces: usize,
-    /// Mean (over subspaces and output-mask directions b) of max normalised WHT coefficient.
+    /// Mean (over subspaces and output-mask directions b) of max normalized WHT coefficient.
     pub mean_max_coeff: f64,
     /// Expected max coefficient under randomness for k=6: ≈ 2.9.
     pub expected_max_random: f64,
-    /// Mean spectral energy (mean of squared normalised coefficients).  Expected = 1.0.
+    /// Mean spectral energy (mean of squared normalized coefficients).  Expected = 1.0.
     pub mean_spectral_energy: f64,
     /// Fraction of subspaces where max_coeff > 3.5 × expected_max_random.
     pub frac_outlier_subspaces: f64,
@@ -262,7 +262,7 @@ pub fn estimate_restricted_walsh(
 
         // 64-point WHT.
         let w = walsh_transform_k6(&f_vals);
-        // Normalise by sqrt(64) = 8.
+        // Normalize by sqrt(64) = 8.
         let max_abs = w.iter().map(|&c| c.abs() as f64 / norm).fold(0.0f64, f64::max);
         let energy  = w.iter().map(|&c| (c as f64 / norm).powi(2)).sum::<f64>() / n_pts as f64;
 
@@ -294,7 +294,7 @@ pub struct SpectralSymStats {
     pub rounds: usize,
     pub autocorr: AutocorrStats,
     pub walsh_subspace: WalshSubspaceStats,
-    /// True when both tests show flat spectral behaviour.
+    /// True when both tests show flat spectral behavior.
     pub is_spectrally_random: bool,
 }
 

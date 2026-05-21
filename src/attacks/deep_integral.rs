@@ -14,7 +14,7 @@
 /// is HIGH (close to 1.0), which requires k > degree(F).
 ///
 /// Four components:
-/// 1. test_affine_subspace    – randomised affine subspace XOR-sum survey.
+/// 1. test_affine_subspace    – randomized affine subspace XOR-sum survey.
 /// 2. find_integral_dimension – finds the minimum cube dimension where
 ///                              integral structure first appears.
 /// 3. measure_derivative_collapse – tracks zero_frac vs. order; reports the
@@ -97,7 +97,7 @@ fn balanced_bit_fraction(xor_sum: &State) -> f64 {
 
 // ── 1. AffineSubspaceStats ───────────────────────────────────────────────────
 
-/// Statistics from randomised affine-subspace XOR-sum survey.
+/// Statistics from randomized affine-subspace XOR-sum survey.
 #[derive(Debug)]
 pub struct AffineSubspaceStats {
     pub rounds: usize,
@@ -115,9 +115,9 @@ pub struct AffineSubspaceStats {
     pub hw_std: f64,
     /// Expected hw_mean under uniformly random output (STATE_BITS / 2).
     pub expected_hw_random: f64,
-    /// Normalised deficit: (expected_hw_random − hw_mean) / expected_hw_random.
+    /// Normalized deficit: (expected_hw_random − hw_mean) / expected_hw_random.
     /// Positive and large → XOR sums have far lower HW than random → structured.
-    pub normalised_hw_deficit: f64,
+    pub normalized_hw_deficit: f64,
 }
 
 /// Survey `n_subspaces` randomly chosen k-dimensional affine subspaces of the
@@ -161,7 +161,7 @@ pub fn test_affine_subspace(
         hw_mean,
         hw_std,
         expected_hw_random: expected,
-        normalised_hw_deficit: (expected - hw_mean) / expected,
+        normalized_hw_deficit: (expected - hw_mean) / expected,
     }
 }
 
@@ -296,7 +296,7 @@ pub struct PersistenceEntry {
     pub dim: usize,
     pub zero_sum_fraction: f64,
     pub balanced_bit_fraction: f64,
-    /// True when zero_sum_fraction ≥ 0.5 (= structural integral behaviour).
+    /// True when zero_sum_fraction ≥ 0.5 (= structural integral behavior).
     pub integral_persists: bool,
 }
 
@@ -304,7 +304,7 @@ pub struct PersistenceEntry {
 #[derive(Debug)]
 pub struct IntegralPersistenceSweep {
     pub entries: Vec<PersistenceEntry>,
-    /// First round where EVERY tested dimension shows random-like behaviour
+    /// First round where EVERY tested dimension shows random-like behavior
     /// (zero_sum_fraction < 0.5 for all dims).
     pub closure_round: Option<usize>,
 }
@@ -333,7 +333,7 @@ pub fn sweep_integral_persistence(
         }
     }
 
-    // Closure round: first r where all tested dims show random-like behaviour.
+    // Closure round: first r where all tested dims show random-like behavior.
     let closure_round = (1..=max_rounds).find(|&r| {
         entries.iter()
             .filter(|e| e.rounds == r)

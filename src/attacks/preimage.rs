@@ -1,4 +1,4 @@
-/// Two complementary preimage analyses:
+/// Two complementary preimage analyzes:
 ///
 /// 1. **8-bit reduced χ — exhaustive preimage counting.**
 /// 2. **4-bit reduced χ — ANF, degree propagation, and structural isolation.**

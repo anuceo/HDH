@@ -70,7 +70,7 @@ fn initial_state() -> State {
 
 // ── state ↔ bytes ─────────────────────────────────────────────────────────────
 
-/// Deserialise 800 state bytes into a `State`, setting parity from shares.
+/// Deserialize 800 state bytes into a `State`, setting parity from shares.
 fn bytes_to_state(b: &[u8; STATE_BYTES]) -> State {
     let mut s = State::zero();
     for i in 0..25 {
@@ -91,7 +91,7 @@ fn bytes_to_state(b: &[u8; STATE_BYTES]) -> State {
     s
 }
 
-/// Serialise the rate portion of `state` into `out[0..RATE_BYTES]`.
+/// Serialize the rate portion of `state` into `out[0..RATE_BYTES]`.
 fn state_to_rate_bytes(state: &State, out: &mut [u8; RATE_BYTES]) {
     for i in 0..25 {
         out[i * 8..(i + 1) * 8].copy_from_slice(&state.s1[i].to_le_bytes());
@@ -172,7 +172,7 @@ pub struct HdhSponge {
 }
 
 impl HdhSponge {
-    /// Create a new sponge initialised to the HDH IV state.
+    /// Create a new sponge initialized to the HDH IV state.
     pub fn new() -> Self {
         HdhSponge {
             state:     initial_state(),
@@ -204,9 +204,9 @@ impl HdhSponge {
         }
     }
 
-    /// Finalise absorbing and begin squeezing.  Must be called exactly once
+    /// Finalize absorbing and begin squeezing.  Must be called exactly once
     /// between absorb and squeeze phases (called automatically by `squeeze`).
-    fn finalise(&mut self) {
+    fn finalize(&mut self) {
         assert!(!self.squeezing);
         // Apply pad10*1 to the partial block and absorb it.
         pad_block(&mut self.buf, self.buf_len);
@@ -224,7 +224,7 @@ impl HdhSponge {
     /// May be called multiple times; each call resumes where the previous left off.
     pub fn squeeze(&mut self, out: &mut [u8]) {
         if !self.squeezing {
-            self.finalise();
+            self.finalize();
         }
         let mut written = 0;
         while written < out.len() {

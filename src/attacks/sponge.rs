@@ -131,7 +131,7 @@ pub struct RoundAttackStatus {
     pub integral_distinguisher: bool,
     /// true = forward/backward separable (MITM applicable).
     pub mitm_separable: bool,
-    /// Measured log2 excess in biclique matching; 0 = random behaviour.
+    /// Measured log2 excess in biclique matching; 0 = random behavior.
     pub biclique_excess_bits: f64,
     /// false = at least one attack succeeds; true = all known attacks fail.
     pub passes_security_bar: bool,

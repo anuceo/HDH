@@ -18,7 +18,7 @@ pub fn log2_binom(n: usize, k: usize) -> f64 {
     (0..k).map(|i| ((n - i) as f64).log2() - ((i + 1) as f64).log2()).sum()
 }
 
-// ── Static XL model (degree-2 linearisation) ───────────────────────────────
+// ── Static XL model (degree-2 linearization) ───────────────────────────────
 
 pub struct XlModel {
     pub input_vars: usize,

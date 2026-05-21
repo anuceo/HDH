@@ -1,0 +1,40 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "words": [
+    "Bertoni", "Jovanovic", "Peyrin", "Sasaki", "Holenstein", "Maurer", "Renner", "Tapp",
+    "Hadamard", "Parseval", "Winograd", "Høyer",
+    "EUROCRYPT", "FGLM", "DPLL", "BBBV", "QCCA", "QROM", "TFLOPS", "PFLOPS",
+    "preimage", "preimages", "indifferentiability", "indiff",
+    "distinguisher", "distinguishers",
+    "biclique", "difflin", "quantumly", "injective",
+    "unkeyed", "oneshot",
+    "groebner", "degrevlex", "fglm",
+    "annihilator", "annihilators",
+    "exascale", "popcount", "submatrix",
+    "chacha", "ChaCha",
+    "Seedable",
+    "autocorr", "stddev",
+    "xors", "xpres",
+    "equivariance", "equivariant",
+    "pointwise", "underdetermined", "underdetermination", "overdetermination",
+    "binom", "coeff", "numer", "derivs", "anfs",
+    "nocapture",
+    "xabu",
+    "tput", "fracs", "isat", "istart", "psweep", "qsweep", "annihil", "elim",
+    "inplace",
+    "Indiff", "Biclique", "Preimage", "Exascale",
+    "DPLL", "dpll",
+    "linearization", "linearize",
+    "Gröbner", "Möbius",
+    "bijective", "isolatable",
+    "evals", "interp", "Feas", "Grov",
+    "compl", "infeas", "resid",
+    "Amplif", "degrad"
+  ],
+  "ignoreWords": [],
+  "ignorePaths": [
+    ".git",
+    "target"
+  ]
+}

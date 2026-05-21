@@ -95,7 +95,7 @@ mod tests {
 
     // ── Jacobian rank (replaces broken degree-threshold test) ───────────────
     //
-    // rank(J_χ(x)) ≈ n means the local linearisation covers all output
+    // rank(J_χ(x)) ≈ n means the local linearization covers all output
     // dimensions — no solvable linear shortcut at that evaluation point.
 
     #[test]
@@ -1168,11 +1168,11 @@ mod tests {
             "2-round dim-4: hw_mean={:.0} should be >500 (integral structure gone)",
             stats.hw_mean
         );
-        // normalised_hw_deficit should be much less than at 1 round (where it is ≈ 1.0).
+        // normalized_hw_deficit should be much less than at 1 round (where it is ≈ 1.0).
         assert!(
-            stats.normalised_hw_deficit < 0.9,
-            "2-round dim-4: normalised_hw_deficit={:.3} should be <0.9 (collapse confirmed)",
-            stats.normalised_hw_deficit
+            stats.normalized_hw_deficit < 0.9,
+            "2-round dim-4: normalized_hw_deficit={:.3} should be <0.9 (collapse confirmed)",
+            stats.normalized_hw_deficit
         );
     }
 
@@ -1480,13 +1480,13 @@ mod tests {
     #[test]
     fn rotational_diff_lane_bits_is_random_at_round2() {
         // After 2 rounds: F(Rot_1(x)) ⊕ F(x) should look like a uniformly random
-        // state difference — HW near STATE_BITS/2, |normalised_deviation| < 0.05.
+        // state difference — HW near STATE_BITS/2, |normalized_deviation| < 0.05.
         let mut r = rng();
         let stats = rotational_xor::test_rotational_diff(2, "lane_bits", 1, 200, &mut r);
         assert!(
             stats.is_random_like,
-            "2-round lane_bits rotation: normalised_deviation={:.4} (expected |dev| < 0.05)",
-            stats.normalised_deviation
+            "2-round lane_bits rotation: normalized_deviation={:.4} (expected |dev| < 0.05)",
+            stats.normalized_deviation
         );
         // hw_mean should be close to STATE_BITS/2 = 3200.
         assert!(
@@ -1504,8 +1504,8 @@ mod tests {
         let stats = rotational_xor::test_rotational_diff(2, "lane_index", 1, 200, &mut r);
         assert!(
             stats.is_random_like,
-            "2-round lane_index rotation: normalised_deviation={:.4} (expected |dev| < 0.05)",
-            stats.normalised_deviation
+            "2-round lane_index rotation: normalized_deviation={:.4} (expected |dev| < 0.05)",
+            stats.normalized_deviation
         );
     }
 
@@ -1551,7 +1551,7 @@ mod tests {
                 "round 2, rotation {}×{}: not fully random \
                  (dev={:.4} cons={:.4} affine={:.4})",
                 e.rotation_label, e.rotation_amount,
-                e.normalised_deviation, e.consistency_score, e.affine_score
+                e.normalized_deviation, e.consistency_score, e.affine_score
             );
         }
     }
@@ -1563,7 +1563,7 @@ mod tests {
 
     #[test]
     fn autocorrelation_is_flat_at_round2() {
-        // Sampling-based normalised Walsh sum Z should be modest for a near-flat spectrum.
+        // Sampling-based normalized Walsh sum Z should be modest for a near-flat spectrum.
         // Thresholds: max|Z| < 7.0 and frac_exceeds_3 < 12%.
         // These reject the 0-round identity (|Z| = √N ≈ 14) while accepting 2-round
         // HDH residual spectral correlations (much smaller than the identity level).
@@ -1578,7 +1578,7 @@ mod tests {
 
     #[test]
     fn restricted_walsh_transform_flat_at_round2() {
-        // Exact k=6 WHT on random subspaces: max normalised coefficient should be
+        // Exact k=6 WHT on random subspaces: max normalized coefficient should be
         // consistent with the random expectation ≈ 2.9 (max of 64 |N(0,1)|).
         // mean_max_coeff < 4.0 and no outlier subspaces.
         let mut r = rng();

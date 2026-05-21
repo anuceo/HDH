@@ -4,7 +4,7 @@
 /// point x is the m×n matrix where J[i,j] = f_i(x⊕eⱼ) ⊕ f_i(x).  For
 /// chi_lane this is a 256×256 matrix over GF(2).
 ///
-/// rank(J) ≈ n means the local linearisation covers all output dimensions —
+/// rank(J) ≈ n means the local linearization covers all output dimensions —
 /// no solvable linear shortcut exists at that point.
 /// rank(J) << n means an attacker could exploit the rank deficiency to recover
 /// inputs from outputs with linear-algebraic work.

@@ -210,7 +210,7 @@ fn classical_xl(n: usize, d: usize) -> f64 {
 
 fn quantum_hybrid_xl(n: usize, d: usize) -> f64 {
     // For each k, quantum cost = 2^{k/2} + Gröbner(n-k, d).
-    // Minimise over k.
+    // minimize over k.
     let pure_gb = classical_xl(n, d);
     let mut best = pure_gb;
     for k in 1..n {

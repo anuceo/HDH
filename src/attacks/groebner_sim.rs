@@ -26,7 +26,7 @@ const OMEGA: f64 = 2.37;
 /// Model of the HDH polynomial system after `rounds` rounds.
 ///
 /// χ contributes degree-2 terms (lane-local, 5-bit window).
-/// θ is linear but maps each bit to a linear combination of 5-lane neighbours,
+/// θ is linear but maps each bit to a linear combination of 5-lane neighbors,
 ///   turning lane-local degree-2 terms into cross-lane degree-2 terms.
 /// Φ is state-dependent routing (its routing index adds one degree), so the
 ///   composition Φ ∘ θ ∘ χ yields degree-3 equations after 1 round.
@@ -121,7 +121,7 @@ pub fn construct_symbolic_system(n_vars: usize, rounds: usize) -> SymbolicRoundE
 ///
 /// The θ ring-diffusion layer is the key structural element: after applying θ,
 /// every variable interacts (via degree-2 monomials) with variables from 5
-/// neighbouring lanes (5 × 64 = 320 variables).  This makes the interaction
+/// neighboring lanes (5 × 64 = 320 variables).  This makes the interaction
 /// graph far too dense to decompose or exploit block structure.
 #[derive(Debug)]
 pub struct MonomialGraphStats {
@@ -152,11 +152,11 @@ pub fn analyze_monomial_graph(
 ) -> MonomialGraphStats {
     let max_edges = (n_vars as f64) * (n_vars as f64 - 1.0) / 2.0;
 
-    // χ: each bit interacts with 4 neighbours (window of 5) → 4 edges per bit.
+    // χ: each bit interacts with 4 neighbors (window of 5) → 4 edges per bit.
     //    Within-lane edges ≈ n_vars × 2 (undirected, both directions).
     let chi_edges = 2.0 * n_vars as f64;
 
-    // θ: each bit depends on 5 × 64 = 320 bits from neighbouring lanes.
+    // θ: each bit depends on 5 × 64 = 320 bits from neighboring lanes.
     //    Cross-lane edges ≈ n_vars × 320 / 2.
     let theta_edges = n_vars as f64 * 320.0 / 2.0;
 
@@ -173,7 +173,7 @@ pub fn analyze_monomial_graph(
     let avg_deg = 2.0 * total_edges / n_vars as f64;
 
     // Fill-in during Gaussian elimination: each eliminated variable causes its
-    // neighbours to be connected to each other (clique).  For a node with
+    // neighbors to be connected to each other (clique).  For a node with
     // avg_degree d: elimination adds d×(d−1)/2 new edges.
     let fill_in = avg_deg * (avg_deg - 1.0) / 2.0;
 
@@ -220,7 +220,7 @@ pub struct EliminationOrderResult {
 
 /// Compare four standard elimination orderings for the HDH system.
 ///
-/// Orderings analysed:
+/// Orderings analyzed:
 ///   lex          – lexicographic; worst case for F4/F5 (d_XL ≈ D_reg).
 ///   degrevlex    – degree-reverse-lex; optimal for F4/F5 (d_XL minimal).
 ///   block-drl    – block degrevlex exploiting share/lane structure.

@@ -654,7 +654,7 @@ fn main() {
     println!("  Note: d_XL >> d_eq for square systems (underdetermination forces higher degree).");
     println!("  1-round low equation-degree does NOT imply low solving degree.");
 
-    // ── 38. Hybrid attack optimisation ───────────────────────────────────────
+    // ── 38. Hybrid attack optimization ───────────────────────────────────────
     section(38, total, "Hybrid Attack  (fix k vars + Gröbner on remaining, sweep systems)");
 
     println!("  {:>20}  {:>6}  {:>8}  {:>8}  {:>12}  {:>12}  {:>12}",
@@ -887,7 +887,7 @@ fn main() {
     println!("  collision, ≥256-bit quantum preimage).  Extending to c=768 would raise");
     println!("  quantum collision security to 256 bits at a throughput cost of ~12%.");
 
-    // ── 52. Affine subspace survey  (randomised integral, rounds 1–3) ─────────
+    // ── 52. Affine subspace survey  (randomized integral, rounds 1–3) ─────────
     section(52, total, "Deep Integral — Affine Subspace Survey  (dim=4, rounds 1–3)");
 
     println!("  {:>6}  {:>5}  {:>12}  {:>17}  {:>10}  {:>13}",
@@ -896,7 +896,7 @@ fn main() {
         let s = deep_integral::test_affine_subspace(r, 4, 40, &mut rng);
         println!("  {:>6}  {:>5}  {:>12.3}  {:>17.3}  {:>10.0}  {:>12.1}%",
             r, 4, s.zero_sum_fraction, s.balanced_bit_fraction,
-            s.hw_mean, s.normalised_hw_deficit * 100.0);
+            s.hw_mean, s.normalized_hw_deficit * 100.0);
     }
     println!("  Round 1: zero_sum_fr >> 0 → integral structure (degree ≤ 3 → D^4 F = 0).");
     println!("  Round 2: zero_sum_fr ≈ 0  → integral structure collapses (degree > 4).");
@@ -949,7 +949,7 @@ fn main() {
         println!("  {:>6}  {:>4}  {:>12.3}  {:>17.3}  {:>14}",
             e.rounds, e.dim, e.zero_sum_fraction, e.balanced_bit_fraction, e.integral_persists);
     }
-    println!("  Closure round (first round where ALL dims show random-like behaviour): {:?}",
+    println!("  Closure round (first round where ALL dims show random-like behavior): {:?}",
         psweep.closure_round);
     println!("  Expected: closure_round = Some(2) — 2-round closure hypothesis confirmed.");
 
@@ -1092,7 +1092,7 @@ fn main() {
         for amount in [1usize, 7, 13] {
             let s = rotational_xor::test_rotational_diff(rounds, "lane_bits", amount, 400, &mut rng);
             println!("  {:>6}  {:>10}  {:>6}  {:>10.4}  {:>10.0}  {:>12}",
-                rounds, "lane_bits", amount, s.normalised_deviation, s.hw_mean, s.is_random_like);
+                rounds, "lane_bits", amount, s.normalized_deviation, s.hw_mean, s.is_random_like);
         }
     }
     println!("  hw_random ≈ {:.0}.  |norm_dev| < 0.05 → random-like.", 3200.0);
@@ -1106,7 +1106,7 @@ fn main() {
         for amount in [1usize, 5, 12] {
             let s = rotational_xor::test_rotational_diff(rounds, "lane_index", amount, 400, &mut rng);
             println!("  {:>6}  {:>11}  {:>6}  {:>10.4}  {:>10.0}  {:>12}",
-                rounds, "lane_index", amount, s.normalised_deviation, s.hw_mean, s.is_random_like);
+                rounds, "lane_index", amount, s.normalized_deviation, s.hw_mean, s.is_random_like);
         }
     }
 
@@ -1144,7 +1144,7 @@ fn main() {
     for e in &sweep_rot {
         println!("  {:>6}  {:>11}  {:>6}  {:>8.4}  {:>10.4}  {:>10.4}  {:>14}",
             e.rounds, e.rotation_label, e.rotation_amount,
-            e.normalised_deviation, e.consistency_score, e.affine_score, e.is_fully_random);
+            e.normalized_deviation, e.consistency_score, e.affine_score, e.is_fully_random);
     }
     let all_r2_random = sweep_rot.iter()
         .filter(|e| e.rounds == 2)

@@ -180,7 +180,7 @@ pub struct CrossUserLeakageResult {
 ///
 /// In a sponge construction, rate outputs never include capacity bytes.
 /// Therefore an adversary observing T users' outputs cannot reconstruct any
-/// user's capacity state.  This function formalises that guarantee analytically.
+/// user's capacity state.  This function formalizes that guarantee analytically.
 pub fn analyze_cross_user_leakage(
     n_users: usize,
     capacity_bits: usize,

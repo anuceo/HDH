@@ -70,7 +70,7 @@ pub struct VariableFixingAnalysis {
     pub points: Vec<FixingPoint>,
 }
 
-/// Analyse the hybrid variable-fixing attack on the HDH system.
+/// Analyze the hybrid variable-fixing attack on the HDH system.
 ///
 /// Samples the cost curve at O(log n) points.  Uses `hybrid_attack_optimum`
 /// from gpu_algebraic.rs for the exact optimum, then verifies that even the
@@ -81,10 +81,10 @@ pub fn analyze_variable_fixing(n_vars: usize, n_eqs: usize, eq_degree: usize) ->
     let pure_gb = sd.xl_time_log2;
     let pure_search = n_vars as f64;
 
-    // Use the exact hybrid optimiser from gpu_algebraic.rs.
+    // Use the exact hybrid optimizer from gpu_algebraic.rs.
     let hyb = hybrid_attack_optimum(n_vars, d_xl);
 
-    // Sample the curve at O(log n) points for visualisation.
+    // Sample the curve at O(log n) points for visualization.
     let sample_ks: Vec<usize> = {
         let mut ks = vec![0usize];
         let mut k = 64usize;
@@ -176,7 +176,7 @@ pub struct PartialInversionStats {
 pub fn model_partial_inversion(rounds: usize) -> PartialInversionStats {
     let n_lanes_per_share = N_LANES;
     let windows_per_lane = BITS_PER_LANE / LANE_WINDOW;
-    let fixed_per_window = 3usize;  // fix 3 of 5 bits to linearise within-window equations
+    let fixed_per_window = 3usize;  // fix 3 of 5 bits to linearize within-window equations
     let residual_per_window = LANE_WINDOW - fixed_per_window;
 
     let total_fixed_per_share = fixed_per_window * windows_per_lane * n_lanes_per_share;
@@ -248,7 +248,7 @@ pub struct LaneEliminationResult {
     pub elimination_makes_things_worse: bool,
 }
 
-/// Analyse what happens when we eliminate `eliminate_lanes` lanes from the
+/// Analyze what happens when we eliminate `eliminate_lanes` lanes from the
 /// HDH polynomial system.
 pub fn analyze_lane_elimination(rounds: usize, eliminate_lanes: usize) -> LaneEliminationResult {
     let n_lanes_total = N_SHARES * N_LANES;
@@ -337,7 +337,7 @@ pub struct ChiIsolationResult {
     pub isolation_makes_things_worse: bool,
 }
 
-/// Analyse the χ-isolation attack strategy for `rounds` HDH rounds.
+/// Analyze the χ-isolation attack strategy for `rounds` HDH rounds.
 pub fn analyze_chi_isolation(rounds: usize) -> ChiIsolationResult {
     let n_vars = N_SHARES * N_LANES * BITS_PER_LANE;
 

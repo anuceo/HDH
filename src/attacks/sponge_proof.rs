@@ -1,6 +1,6 @@
 /// Full indifferentiability theorem with transcript-simulator proof for HDH.
 ///
-/// Formalises the proof of Bertoni et al. 2008 (EUROCRYPT) at the level of
+/// Formalizes the proof of Bertoni et al. 2008 (EUROCRYPT) at the level of
 /// concrete proof steps, an explicit reduction, and a toy-simulator experiment.
 ///
 /// Proof structure:
@@ -250,7 +250,7 @@ pub fn compute_concrete_reduction(
 /// Multi-user (T-instance) sponge security.
 ///
 /// When T independent hash instances share the same permutation, an adversary
-/// can amortise queries across all T instances.  The advantage bound becomes:
+/// can amortize queries across all T instances.  The advantage bound becomes:
 ///   Adv^{multi}(D) ≤ T · q² / 2^c   (union bound over T instances)
 /// or, tighter via the optimal-attack analysis:
 ///   Adv^{multi}(D) ≤ (q + T)² / 2^c  (queries + instances jointly)

@@ -2,7 +2,7 @@ use super::state::State;
 
 /// Linear ring-diffusion layer.
 ///
-/// Each lane XORs with its two immediate neighbours in a 25-lane ring,
+/// Each lane XORs with its two immediate neighbors in a 25-lane ring,
 /// applied independently to every share.  Because θ is a per-share linear
 /// map, it does not couple shares (masking is preserved) and the parity
 /// invariant transforms as parity_out[i] = parity[i]^parity[prev]^parity[next].
