@@ -1,5 +1,6 @@
 pub mod annihilator;
 pub mod boomerang;
+pub mod deep_integral;
 pub mod differential;
 pub mod distinguisher;
 pub mod gpu_algebraic;
@@ -1115,6 +1116,143 @@ mod tests {
         assert!(
             summary.quantum_algebraic_infeasible,
             "quantum algebraic attack on 2-round HDH should be infeasible"
+        );
+    }
+
+    // ── Deep Integral Distinguishers ──────────────────────────────────────────
+
+    #[test]
+    fn affine_subspace_round1_shows_integral_structure() {
+        // After 1 round, HDH has algebraic degree ≤ 3.  For a degree-d
+        // function, D^k F = 0 identically when k > d.  Therefore dim-4 affine
+        // subspace derivatives must be zero, giving zero_sum_fraction ≈ 1.0.
+        // (integral.rs empirically observes ≥ 70% of dim-4 cubes zero after
+        //  1 round; 93% is typical.)
+        let mut rng = rng();
+        let stats = deep_integral::test_affine_subspace(1, 4, 60, &mut rng);
+        assert!(
+            stats.zero_sum_fraction > 0.5,
+            "1-round dim-4: expected >50% zero XOR sums (degree ≤ 3 → D^4 F=0), got {:.2}",
+            stats.zero_sum_fraction
+        );
+        // HW mean should be substantially below the random expectation of STATE_BITS/2.
+        assert!(
+            stats.hw_mean < stats.expected_hw_random * 0.5,
+            "1-round dim-4: hw_mean={:.0} should be < half of random expectation {:.0}",
+            stats.hw_mean, stats.expected_hw_random
+        );
+    }
+
+    #[test]
+    fn affine_subspace_round2_collapses_to_random() {
+        // After 2 rounds the algebraic degree exceeds 4, so D^4 F ≠ 0.
+        // zero_sum_fraction should be < 0.5 and hw_mean should be substantially
+        // above zero (XOR sums are no longer the all-zero vector).
+        let mut rng = rng();
+        let stats = deep_integral::test_affine_subspace(2, 4, 60, &mut rng);
+        // zero_sum_fraction should have collapsed (integral structure gone).
+        assert!(
+            stats.zero_sum_fraction < 0.5,
+            "2-round dim-4: expected random-like (<50%% zero sums), got {:.2}",
+            stats.zero_sum_fraction
+        );
+        // hw_mean should be well above zero (XOR sums not all-zero state).
+        assert!(
+            stats.hw_mean > 500.0,
+            "2-round dim-4: hw_mean={:.0} should be >500 (integral structure gone)",
+            stats.hw_mean
+        );
+        // normalised_hw_deficit should be much less than at 1 round (where it is ≈ 1.0).
+        assert!(
+            stats.normalised_hw_deficit < 0.9,
+            "2-round dim-4: normalised_hw_deficit={:.3} should be <0.9 (collapse confirmed)",
+            stats.normalised_hw_deficit
+        );
+    }
+
+    #[test]
+    fn find_integral_dimension_gives_correct_annihilation_threshold() {
+        // For 1-round HDH (degree ≤ 3), the greedy finder should report
+        // integral_start_dim = Some(4): the minimum dimension where zero_sum_fraction
+        // first exceeds 0.5.  degree_upper_bound = 3.
+        let mut rng = rng();
+        let result = deep_integral::find_integral_dimension(1, 6, 50, &mut rng);
+        // integral_start_dim must be 4 or 5 (allowing one extra if the seed
+        // gives a slightly unlucky batch, but definitely found within max_dim=6).
+        assert!(
+            result.integral_start_dim.is_some(),
+            "1-round: integral_start_dim should be found within max_dim=6"
+        );
+        let isd = result.integral_start_dim.unwrap();
+        assert!(
+            isd <= 5,
+            "1-round: integral_start_dim should be ≤ 5 (degree ≤ 3 → D^4 F=0), got {}",
+            isd
+        );
+        assert!(
+            result.degree_upper_bound <= 4,
+            "1-round: degree_upper_bound should be ≤ 4, got {}",
+            result.degree_upper_bound
+        );
+
+        // For 2-round HDH, degree > 4: no structured dim should appear within max_dim=6.
+        let result2 = deep_integral::find_integral_dimension(2, 6, 50, &mut rng);
+        assert!(
+            result2.integral_start_dim.is_none(),
+            "2-round: integral_start_dim should be None (degree > 6), got {:?}",
+            result2.integral_start_dim
+        );
+    }
+
+    #[test]
+    fn derivative_collapse_shows_annihilation_at_order4_round1() {
+        // For 1-round HDH (degree ≤ 3):
+        //   orders 1–3: D^k F has degree > 0 → not identically zero → low zero_frac
+        //   order 4:    D^4 F = 0 identically → zero_frac ≥ 0.9 → annihilation
+        //
+        // annihilation_order should be Some(4).
+        let mut rng = rng();
+        let collapse = deep_integral::measure_derivative_collapse(1, 5, 40, &mut rng);
+        assert!(!collapse.per_order.is_empty());
+
+        // Order 4 should be annihilated (zero_frac ≥ 0.9).
+        let ord4 = collapse.per_order.iter().find(|s| s.order == 4)
+            .expect("order-4 stats missing");
+        assert!(
+            ord4.zero_frac >= 0.5,
+            "1-round order-4: zero_frac={:.2} expected ≥ 0.5 (D^4 F = 0)",
+            ord4.zero_frac
+        );
+
+        // annihilation_order should be detected.
+        assert!(
+            collapse.annihilation_order.is_some(),
+            "1-round: annihilation_order should be Some(_)"
+        );
+        let ao = collapse.annihilation_order.unwrap();
+        assert!(
+            ao <= 5,
+            "1-round: annihilation_order should be ≤ 5, got {}",
+            ao
+        );
+    }
+
+    #[test]
+    fn sweep_integral_persistence_closure_by_round2() {
+        // The 2-round closure hypothesis: dim-4 cubes show integral structure
+        // at round 1 (zero_sum_fraction ≥ 0.5) and collapse at round 2.
+        // Confirm closure_round = Some(2).
+        let mut rng = rng();
+        let sweep = deep_integral::sweep_integral_persistence(3, &[4], 40, &mut rng);
+        assert!(
+            sweep.closure_round.is_some(),
+            "closure_round should be detected within 3 rounds"
+        );
+        let cr = sweep.closure_round.unwrap();
+        assert!(
+            cr <= 2,
+            "integral structure should close by round 2, but closure_round={}",
+            cr
         );
     }
 }

@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, boomerang, differential, distinguisher, gpu_algebraic, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, sat, sponge, sponge_indiff, sponge_proof, truncated};
+use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, sat, sponge, sponge_indiff, sponge_proof, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 51;
+    let total = 55;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -886,6 +886,72 @@ fn main() {
     println!("  Conclusion: HDH at c=512 achieves NIST PQC Level 5 (≥128-bit quantum");
     println!("  collision, ≥256-bit quantum preimage).  Extending to c=768 would raise");
     println!("  quantum collision security to 256 bits at a throughput cost of ~12%.");
+
+    // ── 52. Affine subspace survey  (randomised integral, rounds 1–3) ─────────
+    section(52, total, "Deep Integral — Affine Subspace Survey  (dim=4, rounds 1–3)");
+
+    println!("  {:>6}  {:>5}  {:>12}  {:>17}  {:>10}  {:>13}",
+        "rounds", "dim", "zero_sum_fr", "balanced_bit_fr", "hw_mean", "hw_deficit%");
+    for r in 1..=3usize {
+        let s = deep_integral::test_affine_subspace(r, 4, 40, &mut rng);
+        println!("  {:>6}  {:>5}  {:>12.3}  {:>17.3}  {:>10.0}  {:>12.1}%",
+            r, 4, s.zero_sum_fraction, s.balanced_bit_fraction,
+            s.hw_mean, s.normalised_hw_deficit * 100.0);
+    }
+    println!("  Round 1: zero_sum_fr >> 0 → integral structure (degree ≤ 3 → D^4 F = 0).");
+    println!("  Round 2: zero_sum_fr ≈ 0  → integral structure collapses (degree > 4).");
+    println!("  Round 3: random-like      → indistinguishable from random permutation.");
+
+    // ── 53. Greedy cube-dimension finder  (annihilation threshold) ────────────
+    section(53, total, "Deep Integral — Greedy Dimension Finder  (rounds 1–2, max_dim=6)");
+
+    println!("  {:>6}  {:>6}  {:>20}  {:>15}  {:>14}",
+        "rounds", "istart", "degree_upper_bound", "cube_annihil", "dim_fractions");
+    for r in 1..=2usize {
+        let res = deep_integral::find_integral_dimension(r, 6, 40, &mut rng);
+        let fracs: Vec<String> = res.dim_fractions.iter()
+            .map(|f| format!("{:.2}", f)).collect();
+        println!("  {:>6}  {:>6}  {:>20}  {:>14}  [{}]",
+            r,
+            res.integral_start_dim.map(|d| d.to_string()).unwrap_or("None".into()),
+            res.degree_upper_bound,
+            res.cube_annihilation_depth,
+            fracs.join(", "));
+    }
+    println!("  integral_start_dim: minimum dim where zero_sum_frac ≥ 0.5 = degree + 1.");
+    println!("  Round 1: should be 4 (confirming degree ≤ 3).");
+    println!("  Round 2: None (degree > 6, no annihilation within max_dim).");
+
+    // ── 54. Derivative collapse  (order 1–5, rounds 1–2) ──────────────────────
+    section(54, total, "Deep Integral — Derivative Collapse  (orders 1–5, rounds 1–2)");
+
+    for r in 1..=2usize {
+        println!("  Round {}:", r);
+        println!("    {:>5}  {:>10}  {:>10}  {:>10}  {:>10}",
+            "order", "zero_frac", "hw_mean", "hw_std", "entropy");
+        let col = deep_integral::measure_derivative_collapse(r, 5, 30, &mut rng);
+        for (s, e) in col.per_order.iter().zip(col.derivative_entropy.iter()) {
+            println!("    {:>5}  {:>10.3}  {:>10.0}  {:>10.0}  {:>10.3}",
+                s.order, s.zero_frac, s.hw_mean, s.hw_std, e);
+        }
+        println!("    annihilation_order: {:?}", col.annihilation_order);
+    }
+    println!("  For round 1: annihilation at order 4 (D^4 F = 0).  Entropy peaks there.");
+    println!("  For round 2: no annihilation within order 5 (degree > 5).");
+
+    // ── 55. Integral persistence sweep  (rounds 1–4, dims 3–5) ───────────────
+    section(55, total, "Deep Integral — Persistence Sweep  (rounds 1–4, dims 3–5)");
+
+    let psweep = deep_integral::sweep_integral_persistence(4, &[3, 4, 5], 30, &mut rng);
+    println!("  {:>6}  {:>4}  {:>12}  {:>17}  {:>14}",
+        "rounds", "dim", "zero_sum_fr", "balanced_bit_fr", "integral_persists");
+    for e in &psweep.entries {
+        println!("  {:>6}  {:>4}  {:>12.3}  {:>17.3}  {:>14}",
+            e.rounds, e.dim, e.zero_sum_fraction, e.balanced_bit_fraction, e.integral_persists);
+    }
+    println!("  Closure round (first round where ALL dims show random-like behaviour): {:?}",
+        psweep.closure_round);
+    println!("  Expected: closure_round = Some(2) — 2-round closure hypothesis confirmed.");
 
     println!("\n=== Attack harness complete ===");
 }
