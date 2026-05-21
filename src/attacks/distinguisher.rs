@@ -28,7 +28,7 @@
 ///    analysis), so dim-6 cosets must sum to 0.  Failures indicate a degree
 ///    miscalculation or structural error.
 
-use crate::state::State;
+use crate::algorithm::state::State;
 use rand::Rng;
 
 // ── Internal helpers ────────────────────────────────────────────────────────
@@ -47,7 +47,7 @@ pub fn random_state(rng: &mut impl Rng) -> State {
 
 /// Apply `n` consecutive rounds indexed 0, 1, …, n−1.
 pub fn apply_rounds(state: State, n: usize) -> State {
-    (0..n as u64).fold(state, |s, idx| crate::round(s, idx))
+    (0..n as u64).fold(state, |s, idx| crate::algorithm::round(s, idx))
 }
 
 /// Total bits across 4 shares × 25 lanes × 64 bits = 6400.

@@ -1,4 +1,4 @@
-use crate::state::State;
+use super::state::State;
 
 /// Linear ring-diffusion layer.
 ///

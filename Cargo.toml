@@ -9,11 +9,20 @@ rand_chacha = "0.3"
 sha3 = "0.10"
 blake3 = "1.5"
 
+# ── Binaries ────────────────────────────────────────────────────────────────
+
+# Main entry point — hash CLI and demo.
+[[bin]]
+name = "hdh"
+path = "src/main.rs"
+
+# Permutation avalanche / DFA analysis harness.
 [[bin]]
 name = "avalanche_bench"
 path = "benches/avalanche_bench.rs"
 bench = false
 
+# Full algebraic + sponge attack harness.
 [[bin]]
 name = "attack_bench"
 path = "benches/attack_bench.rs"

@@ -257,7 +257,7 @@ pub struct BirthdayBoundCheck {
 
 /// Extract a `projection_bits`-wide window from the first lane of share 1 of
 /// the output state.  Keeps the implementation simple and deterministic.
-fn project_state(s: &crate::state::State, projection_bits: usize) -> u64 {
+fn project_state(s: &crate::algorithm::state::State, projection_bits: usize) -> u64 {
     let mask = if projection_bits >= 64 { u64::MAX } else { (1u64 << projection_bits) - 1 };
     s.s1[0] & mask
 }

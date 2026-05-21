@@ -23,8 +23,8 @@
 /// C, C'?  For a state-DEPENDENT routing φ, XOR-ing a constant into the state
 /// changes all routing indices and is therefore non-affine.  We measure whether
 /// any single-share constant shift induces a fixed output offset.
-use crate::phi::phi;
-use crate::state::State;
+use crate::algorithm::phi::phi;
+use crate::algorithm::state::State;
 use rand::Rng;
 
 fn rotate_state(s: &State, r: usize) -> State {

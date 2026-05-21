@@ -36,7 +36,7 @@
 /// random permutation (σ ≈ 40).  1-round gives ~6395 (near-total balance);
 /// 2-round gives ~3700 (slightly above random, no practical exploitation).
 
-use crate::state::State;
+use crate::algorithm::state::State;
 use rand::Rng;
 
 use crate::attacks::distinguisher::{apply_rounds, random_state, STATE_BITS};

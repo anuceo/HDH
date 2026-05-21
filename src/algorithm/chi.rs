@@ -1,4 +1,4 @@
-use crate::state::State;
+use super::state::State;
 
 pub fn quad(a: u64, b: u64, c: u64, d: u64) -> u64 {
     a.wrapping_mul(b) ^ c.wrapping_mul(d)

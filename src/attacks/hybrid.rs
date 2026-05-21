@@ -12,7 +12,7 @@
 /// has degree d−2; at d≥32 it remains high-degree and the parity should be
 /// unbiased.  A large bias would indicate a degree-2 "rectangular" structure
 /// exploitable by boomerang-rectangle distinguishers.
-use crate::chi::chi_lane;
+use crate::algorithm::chi::chi_lane;
 use rand::Rng;
 
 fn bit_parity(x: u64) -> u64 {

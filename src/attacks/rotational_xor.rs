@@ -21,7 +21,7 @@
 /// every rotation type.
 
 use crate::attacks::distinguisher::{apply_rounds, random_state, STATE_BITS};
-use crate::state::State;
+use crate::algorithm::state::State;
 use rand::Rng;
 
 // ── helpers ───────────────────────────────────────────────────────────────────

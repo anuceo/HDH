@@ -22,7 +22,7 @@
 ///   Round 2+: Φ's state-dependent routing destroys all symmetry → flat spectrum.
 
 use crate::attacks::distinguisher::{apply_rounds, random_state, STATE_BITS};
-use crate::state::State;
+use crate::algorithm::state::State;
 use rand::Rng;
 
 // ── helpers ───────────────────────────────────────────────────────────────────

@@ -1,9 +1,71 @@
+/// HDH algorithm module.
+///
+/// Contains the complete DFA-hardened χ-core permutation and the sponge hash
+/// construction built on top of it.
+///
+/// # Module layout
+///
+/// | Sub-module  | Purpose                                           |
+/// |-------------|---------------------------------------------------|
+/// | `state`     | 6400-bit state type (4 × 25 × 64-bit shares)      |
+/// | `chi`       | Non-linear χ layer (quad mixing + bit rotations)  |
+/// | `theta`     | Linear ring-diffusion layer (θ, parity coupling)  |
+/// | `phi`       | Data-dependent lane-routing layer (Φ)             |
+/// | `dfa`       | Fault-injection helpers for DFA resistance tests  |
+/// | `entropy`   | BLAKE3-based entropy mixing utility               |
+/// | `mask`      | Fresh-mask generation (ChaCha20 seeded)           |
+/// | `stats`     | Avalanche / Hamming-distance measurement          |
+/// | `hash`      | Sponge hash construction and public API           |
+
+pub mod chi;
+pub mod dfa;
+pub mod entropy;
+pub mod hash;
+pub mod mask;
+pub mod phi;
+pub mod state;
+pub mod stats;
+pub mod theta;
+
+// Re-export the most commonly used types and functions at this module level.
+pub use state::State;
+pub use hash::{
+    hdh_hash, hdh_hash_256, hdh_hash_512, hdh_hash_1024, hdh_prf,
+    HdhSponge, RATE_BYTES, CAPACITY_BYTES, ROUNDS,
+};
+
+// ── HDH round function ────────────────────────────────────────────────────────
+
+/// Apply one round of the HDH permutation to `s`.
+///
+/// Round order:
+///   1. Entropy inject   — per-share BLAKE3-derived constant XOR
+///   2. χ (chi)          — non-linear quad mixing within each lane
+///   3. θ (theta)        — ring-diffusion across 25 lanes
+///   4. Φ (phi)          — state-dependent lane routing
+pub fn round(mut s: State, round_idx: u64) -> State {
+    let r = blake3::hash(&round_idx.to_le_bytes()).as_bytes()[0] as u64;
+
+    for i in 0..25 {
+        s.s1[i] ^= r;
+        s.s2[i] ^= r.rotate_left(11);
+        s.s3[i] ^= r.rotate_left(23);
+        s.s4[i] ^= r.rotate_left(37);
+    }
+
+    s = chi::chi(&s);
+    s = theta::theta(&s);
+    s = phi::phi(&s);
+    s
+}
+
+// ── Unit tests for permutation primitives ────────────────────────────────────
+
 #[cfg(test)]
 mod tests {
-    use crate::dfa::inject_bit_fault;
-    use crate::state::State;
-    use crate::stats::{avalanche_ratio, hamming_distance};
-    use crate::{chi, phi, theta, round};
+    use super::*;
+    use dfa::inject_bit_fault;
+    use stats::{avalanche_ratio, hamming_distance};
 
     fn fixed_state(seed: u64) -> State {
         use std::num::Wrapping;
@@ -47,8 +109,6 @@ mod tests {
 
     #[test]
     fn theta_parity_invariant() {
-        // θ is linear and per-share; parity must satisfy
-        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next].
         let s = chi::chi(&fixed_state(31415));
         let out = theta::theta(&s);
         for i in 0..25 {
@@ -56,7 +116,6 @@ mod tests {
             let next = (i + 1) % 25;
             let expected = s.parity[prev] ^ s.parity[i] ^ s.parity[next];
             assert_eq!(out.parity[i], expected, "theta parity mismatch at lane {i}");
-            // also verify parity matches actual share XOR
             let actual = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
             assert_eq!(out.parity[i], actual, "theta share parity broken at lane {i}");
         }
@@ -64,13 +123,11 @@ mod tests {
 
     #[test]
     fn theta_cross_lane_diffusion() {
-        // a single-lane perturbation must reach its two neighbours after θ
         let s = fixed_state(271828);
         let mut perturbed = s.clone();
         perturbed.s1[12] ^= 1;
         let a = theta::theta(&s);
         let b = theta::theta(&perturbed);
-        // lanes 11, 12, 13 must differ; all others must be identical
         for i in 0..25 {
             let changed = (a.s1[i] ^ b.s1[i]) != 0;
             if i == 11 || i == 12 || i == 13 {
@@ -96,14 +153,10 @@ mod tests {
         let s = fixed_state(1337);
         let mut s2 = s.clone();
         s2.s1[0] ^= 1;
-
         let r1 = round(s.clone(), 1);
         let r2 = round(s2.clone(), 1);
-
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // θ spreads each chi-output perturbation to 3 lanes before φ routes it
-        // further; a single round achieves ~10-16% flipped bits in practice.
         assert!(
             ratio > 0.08,
             "single-round avalanche too weak: {:.2}% bits flipped",
@@ -116,19 +169,14 @@ mod tests {
         let s = fixed_state(1337);
         let mut s2 = s.clone();
         s2.s1[0] ^= 1;
-
         let mut r1 = s.clone();
         let mut r2 = s2.clone();
         for i in 0..2 {
             r1 = round(r1, i);
             r2 = round(r2, i);
         }
-
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // θ expands each round's reach to 3 lanes; after two rounds the ring
-        // diffusion covers the full 25-lane state and φ completes the mixing.
-        // Two rounds reliably reach full (~50%) avalanche.
         assert!(
             ratio > 0.40,
             "two-round avalanche too weak: {:.2}% bits flipped",
@@ -141,18 +189,14 @@ mod tests {
         let s = fixed_state(1337);
         let mut s2 = s.clone();
         s2.s1[0] ^= 1;
-
         let mut r1 = s;
         let mut r2 = s2;
         for i in 0..4 {
             r1 = round(r1, i);
             r2 = round(r2, i);
         }
-
         let dist = hamming_distance(&r1, &r2);
         let ratio = avalanche_ratio(dist);
-        // four rounds of χ→θ→φ converge near the 50% ideal; tight bound
-        // confirms sustained saturation rather than a one-round spike.
         assert!(
             ratio > 0.45,
             "four-round avalanche too weak: {:.2}% bits flipped",
@@ -164,13 +208,10 @@ mod tests {
     fn dfa_diffusion_detectable() {
         let s = fixed_state(555);
         let clean = round(s.clone(), 1);
-
         let mut faulty_s = s;
         inject_bit_fault(&mut faulty_s, 3, 12);
         let faulty = round(faulty_s, 1);
-
         let dist = hamming_distance(&clean, &faulty);
-        // a single injected bit must produce measurable diffusion
         assert!(dist > 0, "fault produced zero diffusion — DFA hardening not functioning");
     }
 
@@ -178,7 +219,6 @@ mod tests {
     fn round_differs_from_input() {
         let s = fixed_state(0xdeadbeef);
         let out = round(s.clone(), 0);
-        // output should not be identical to input across all shares
         let identical = (0..25).all(|i| out.s1[i] == s.s1[i] && out.s2[i] == s.s2[i]);
         assert!(!identical, "round produced no change");
     }

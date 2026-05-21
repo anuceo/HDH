@@ -3,7 +3,7 @@
 /// For linear masks λ = (λ1,λ2,λ3,λ4) on input and μ = (μ1,μ2,μ3,μ4) on
 /// output, we measure |Pr[parity(λ·in) = parity(μ·out)] − ½|.  A perfectly
 /// nonlinear function has zero bias for all non-trivial masks.
-use crate::chi::chi_lane;
+use crate::algorithm::chi::chi_lane;
 use rand::Rng;
 
 pub struct LinearBiasStats {

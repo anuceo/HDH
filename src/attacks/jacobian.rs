@@ -8,7 +8,7 @@
 /// no solvable linear shortcut exists at that point.
 /// rank(J) << n means an attacker could exploit the rank deficiency to recover
 /// inputs from outputs with linear-algebraic work.
-use crate::chi::chi_lane;
+use crate::algorithm::chi::chi_lane;
 use rand::Rng;
 
 /// 256-bit row (4 × u64 words).

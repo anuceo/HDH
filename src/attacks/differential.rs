@@ -3,7 +3,7 @@
 /// For a fixed input difference Δ = (Δx1,Δx2,Δx3,Δx4) we sample many random
 /// inputs and record the distribution of output differences ΔG = quad(x)⊕quad(x⊕Δ).
 /// A low maximum collision fraction means no differential shortcut exists.
-use crate::chi::quad;
+use crate::algorithm::chi::quad;
 use rand::Rng;
 use std::collections::HashMap;
 

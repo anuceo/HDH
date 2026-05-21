@@ -1,4 +1,4 @@
-use crate::state::State;
+use super::state::State;
 
 pub fn hamming_distance(a: &State, b: &State) -> u32 {
     let mut d = 0u32;

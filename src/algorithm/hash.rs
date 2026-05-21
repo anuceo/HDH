@@ -28,7 +28,7 @@
 /// Quantum collision    : ≈ 171 bits (BHT, c/3)
 /// Quantum preimage     : 256 bits  (Grover, c/2)
 
-use crate::state::State;
+use super::state::State;
 
 /// Byte width of the rate portion of the state.
 pub const RATE_BYTES: usize = 736;
@@ -130,7 +130,7 @@ fn xor_block_into_state(state: &mut State, block: &[u8; RATE_BYTES]) {
 
 /// Apply ROUNDS rounds of the HDH permutation to `state`.
 fn permute(state: State) -> State {
-    (0..ROUNDS as u64).fold(state, |s, idx| crate::round(s, idx))
+    (0..ROUNDS as u64).fold(state, |s, idx| super::round(s, idx))
 }
 
 /// Permute `state` in place.
