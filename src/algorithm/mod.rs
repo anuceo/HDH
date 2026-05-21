@@ -7,25 +7,13 @@
 ///
 /// | Sub-module  | Purpose                                           |
 /// |-------------|---------------------------------------------------|
-/// | `state`     | 6400-bit state type (4 × 25 × 64-bit shares)      |
-/// | `chi`       | Non-linear χ layer (quad mixing + bit rotations)  |
-/// | `theta`     | Linear ring-diffusion layer (θ, parity coupling)  |
-/// | `phi`       | Data-dependent lane-routing layer (Φ)             |
-/// | `dfa`       | Fault-injection helpers for DFA resistance tests  |
-/// | `entropy`   | BLAKE3-based entropy mixing utility               |
-/// | `mask`      | Fresh-mask generation (ChaCha20 seeded)           |
-/// | `stats`     | Avalanche / Hamming-distance measurement          |
+/// | `state`     | 6400-bit state type, fault injection, avalanche   |
+/// | `chi`       | Non-linear χ layer, θ diffusion, Φ routing        |
 /// | `hash`      | Sponge hash construction and public API           |
 
 pub mod chi;
-pub mod dfa;
-pub mod entropy;
 pub mod hash;
-pub mod mask;
-pub mod phi;
 pub mod state;
-pub mod stats;
-pub mod theta;
 
 // Re-export the most commonly used types and functions at this module level.
 pub use state::State;
@@ -54,8 +42,8 @@ pub fn round(mut s: State, round_idx: u64) -> State {
     }
 
     s = chi::chi(&s);
-    s = theta::theta(&s);
-    s = phi::phi(&s);
+    s = chi::theta(&s);
+    s = chi::phi(&s);
     s
 }
 
@@ -64,8 +52,7 @@ pub fn round(mut s: State, round_idx: u64) -> State {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use dfa::inject_bit_fault;
-    use stats::{avalanche_ratio, hamming_distance};
+    use state::{inject_bit_fault, avalanche_ratio, hamming_distance};
 
     fn fixed_state(seed: u64) -> State {
         use std::num::Wrapping;
@@ -110,7 +97,7 @@ mod tests {
     #[test]
     fn theta_parity_invariant() {
         let s = chi::chi(&fixed_state(31415));
-        let out = theta::theta(&s);
+        let out = chi::theta(&s);
         for i in 0..25 {
             let prev = (i + 24) % 25;
             let next = (i + 1) % 25;
@@ -126,8 +113,8 @@ mod tests {
         let s = fixed_state(271828);
         let mut perturbed = s.clone();
         perturbed.s1[12] ^= 1;
-        let a = theta::theta(&s);
-        let b = theta::theta(&perturbed);
+        let a = chi::theta(&s);
+        let b = chi::theta(&perturbed);
         for i in 0..25 {
             let changed = (a.s1[i] ^ b.s1[i]) != 0;
             if i == 11 || i == 12 || i == 13 {
@@ -141,8 +128,8 @@ mod tests {
     #[test]
     fn phi_deterministic() {
         let s = fixed_state(99);
-        let a = phi::phi(&s);
-        let b = phi::phi(&s);
+        let a = chi::phi(&s);
+        let b = chi::phi(&s);
         for i in 0..25 {
             assert_eq!(a.s1[i], b.s1[i]);
         }

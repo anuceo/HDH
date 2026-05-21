@@ -30,7 +30,7 @@
 /// - Cat 5: entropy collapse rate equals random expectation at 2 rounds.
 
 use crate::attacks::distinguisher::{apply_rounds, random_state, STATE_BITS};
-use crate::algorithm::phi::phi;
+use crate::algorithm::chi::phi;
 use crate::algorithm::state::State;
 use rand::Rng;
 use std::collections::HashMap;

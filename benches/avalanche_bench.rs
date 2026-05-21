@@ -1,6 +1,4 @@
-use hdh::algorithm::dfa::inject_bit_fault;
-use hdh::algorithm::state::State;
-use hdh::algorithm::stats::{avalanche_ratio, hamming_distance};
+use hdh::algorithm::state::{inject_bit_fault, avalanche_ratio, hamming_distance, State};
 use hdh::algorithm::round;
 
 fn random_state() -> State {
