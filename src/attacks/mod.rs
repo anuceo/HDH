@@ -10,9 +10,11 @@ pub mod linear;
 pub mod mitm;
 pub mod phi_symmetry;
 pub mod preimage;
+pub mod quantum_security;
 pub mod sat;
 pub mod sponge;
 pub mod sponge_indiff;
+pub mod sponge_proof;
 pub mod truncated;
 
 #[cfg(test)]
@@ -925,6 +927,194 @@ mod tests {
         assert!(
             !entry_2r.is_gpu_feasible_exascale,
             "2-round HDH algebraic attack is marked GPU-feasible on exascale — unexpected"
+        );
+    }
+
+    // ── Transcript-simulator proof ──────────────────────────────────────────
+    //
+    // Verifies that the toy simulator's collision rate matches the theoretical
+    // bound, and that the formal proof structure holds for HDH parameters.
+
+    #[test]
+    fn transcript_simulator_collision_rate_matches_bound() {
+        // Toy simulator with c=16 bits, 1000 queries (500 forward + 500 backward).
+        // Expected collisions ≈ 500×500/65536 ≈ 3.8.  Must be within 3× of expected.
+        let mut r = crate::attacks::tests::rng();
+        let res = sponge_proof::run_transcript_simulation(1000, 16, &mut r);
+        assert!(
+            res.within_3x_of_expected,
+            "simulator collisions {} too far from expected {:.1} (ratio={:.2})",
+            res.collisions_observed, res.expected_collisions, res.ratio
+        );
+    }
+
+    #[test]
+    fn transcript_simulator_high_capacity_has_negligible_collisions() {
+        // At c=32 bits (4×10^9 range), 1000 queries → expected collisions ≈ 5.8×10^{-5}.
+        // We expect exactly 0 collisions observed in nearly every run.
+        let mut r = crate::attacks::tests::rng();
+        let res = sponge_proof::run_transcript_simulation(1000, 28, &mut r);
+        // At c=28: expected ≈ 500×500/2^28 ≈ 0.00093.  Almost certainly 0 collisions.
+        assert!(
+            res.collisions_observed <= 2,
+            "simulator collisions {} at c=28 — unexpectedly high",
+            res.collisions_observed
+        );
+    }
+
+    #[test]
+    fn proof_structure_all_lemmas_hold_at_c512_q128() {
+        // At c=512, q=2^128: all lemmas and the theorem must hold.
+        let proof = sponge_proof::build_proof_structure(6400, 5888, 128);
+        assert!(proof.lemma_completeness.holds, "completeness lemma failed");
+        assert!(proof.lemma_consistency.holds,  "consistency lemma failed");
+        assert!(proof.lemma_closeness.holds,    "closeness lemma failed");
+        assert!(proof.theorem_indiff.holds,     "indiff theorem failed");
+        // Theorem bound must be strictly below 0 (advantage < 1).
+        assert!(
+            proof.theorem_indiff.bound_log2 < 0.0,
+            "theorem bound 2^{:.1} ≥ 1 — advantage exceeds 1",
+            proof.theorem_indiff.bound_log2
+        );
+    }
+
+    #[test]
+    fn concrete_reduction_is_non_trivial_at_c512() {
+        // If D has 2^{-10} advantage and c=512, q=2^128: gap = 2^{-256} ≪ 2^{-10}.
+        // The reduction to permutation distinguisher must be non-trivial.
+        let red = sponge_proof::compute_concrete_reduction(512, 128, -10.0);
+        assert!(
+            red.is_non_trivial,
+            "reduction is vacuous: permutation advantage = 2^{:.1}",
+            red.permutation_advantage_lb_log2
+        );
+        // Permutation advantage must be close to D's advantage (gap is negligible).
+        assert!(
+            red.permutation_advantage_lb_log2 > -15.0,
+            "permutation advantage 2^{:.1} much lower than D's 2^{{-10}}",
+            red.permutation_advantage_lb_log2
+        );
+    }
+
+    #[test]
+    fn multi_instance_security_holds_for_large_deployments() {
+        // 2^{32} instances × 2^{64} queries each: total budget = 2^{96}.
+        // At c=512: advantage ≤ 2^{192} / 2^{512} = 2^{−320} → 320 bits secure.
+        let mi = sponge_proof::multi_instance_security(6400, 512, 32, 64);
+        assert!(
+            mi.meets_256bit,
+            "multi-instance (T=2^32, q=2^64) security {:.1} bits < 256",
+            mi.security_bits
+        );
+    }
+
+    #[test]
+    fn capacity_minimum_analysis_confirms_c512_is_right() {
+        // min_c for 256-bit classical collision = 512.  HDH's c=512 meets exactly.
+        // min_c for 128-bit quantum collision (BHT) = 384. c=512 > 384. ✓
+        let analysis = sponge_proof::analyze_capacity_minimum(6400);
+        assert_eq!(
+            analysis.min_c_classical_256bit, 512,
+            "min capacity for 256-bit classical collision should be 512, got {}",
+            analysis.min_c_classical_256bit
+        );
+        assert!(
+            analysis.min_c_quantum_128bit <= 384,
+            "min capacity for 128-bit quantum collision {} > 384 — formula error",
+            analysis.min_c_quantum_128bit
+        );
+    }
+
+    // ── Quantum security analysis ───────────────────────────────────────────
+    //
+    // Verifies BHT collision bounds, Grover preimage bounds, NIST level mapping,
+    // and quantum XL infeasibility for 2-round HDH.
+
+    #[test]
+    fn quantum_collision_at_c512_exceeds_nist_level5() {
+        // BHT: quantum collision = c/3 = 512/3 ≈ 170.7 bits.
+        // NIST Level 5 threshold = 128-bit quantum collision.
+        let bounds = quantum_security::quantum_hash_bounds(6400, 512, 512);
+        assert!(
+            bounds.quantum_collision_bits >= 128.0,
+            "quantum collision {:.1} < 128 — below NIST Level 5",
+            bounds.quantum_collision_bits
+        );
+        assert!(
+            bounds.meets_nist_level5,
+            "HDH c=512 should meet NIST PQC Level 5 for 512-bit output"
+        );
+    }
+
+    #[test]
+    fn quantum_preimage_equals_classical_halved() {
+        // Grover: quantum preimage = min(c/2, n/2).  At c=n=512: 256 bits.
+        let bounds = quantum_security::quantum_hash_bounds(6400, 512, 512);
+        assert!(
+            (bounds.quantum_preimage_bits - 256.0).abs() < 1.0,
+            "quantum preimage {:.1} ≠ 256 at c=n=512",
+            bounds.quantum_preimage_bits
+        );
+    }
+
+    #[test]
+    fn quantum_capacity_sweep_identifies_correct_minimums() {
+        // min capacity for 128-bit quantum collision (BHT: c/3 ≥ 128) = 384.
+        // (With output=512: min(c/3, 512/3) ≥ 128 needs c/3 ≥ 128 → c ≥ 384.)
+        let sweep = quantum_security::quantum_capacity_sweep(6400, 512);
+        assert_eq!(
+            sweep.min_capacity_quantum_128_collision, 384,
+            "min c for 128-bit quantum collision should be 384, got {}",
+            sweep.min_capacity_quantum_128_collision
+        );
+        // At output=512, n/3 ≈ 170.7 bits caps quantum collision below 256 bits
+        // regardless of capacity.  Confirm this is correctly modelled: no capacity
+        // in the sweep meets 256-bit quantum collision at output=512.
+        assert_eq!(
+            sweep.min_capacity_quantum_256_collision,
+            usize::MAX,
+            "256-bit quantum collision should be unreachable at output=512 (capped by n/3≈170)"
+        );
+        // With output=1024 the cap lifts: min(c/3, 1024/3) ≥ 256 needs c ≥ 768.
+        let sweep_1024 = quantum_security::quantum_capacity_sweep(6400, 1024);
+        assert_eq!(
+            sweep_1024.min_capacity_quantum_256_collision, 768,
+            "min c for 256-bit quantum collision at output=1024 should be 768, got {}",
+            sweep_1024.min_capacity_quantum_256_collision
+        );
+    }
+
+    #[test]
+    fn quantum_xl_two_round_is_infeasible() {
+        // Quantum-hybrid XL on 2-round HDH (n=6400, d_XL=700).
+        // Even aggressive quantum (√ classical) must exceed 2^{128}.
+        let qxl = quantum_security::quantum_xl_model();
+        let entry = qxl.entries.iter()
+            .find(|e| e.description.contains("2-round"))
+            .expect("2-round entry missing from quantum XL model");
+        assert!(
+            entry.best_quantum_log2 > 128.0,
+            "quantum XL on 2-round HDH: best 2^{:.0} ≤ 2^{{128}}",
+            entry.best_quantum_log2
+        );
+    }
+
+    #[test]
+    fn quantum_summary_simon_not_applicable() {
+        // Simon's algorithm requires a hidden XOR period f(x) = f(x⊕s).
+        // HDH's state-dependent Φ routing breaks any period structure.
+        let summary = quantum_security::quantum_security_summary(6400, 5888, 512);
+        assert!(
+            !summary.simon_applicable,
+            "Simon's algorithm should NOT be applicable to HDH"
+        );
+        assert!(
+            summary.meets_quantum_128_collision,
+            "HDH c=512 should meet 128-bit quantum collision security"
+        );
+        assert!(
+            summary.quantum_algebraic_infeasible,
+            "quantum algebraic attack on 2-round HDH should be infeasible"
         );
     }
 }
