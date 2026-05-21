@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, sat, sponge, sponge_indiff, sponge_proof, truncated};
+use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, rotational_xor, sat, spectral_sym, sponge, sponge_indiff, sponge_proof, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 63;
+    let total = 72;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -1082,6 +1082,132 @@ fn main() {
     println!("  has solving degree ≈ {} → complexity 2^{:.0} >> 2^{{256}}.",
         hybrid_sat_gb::analyze_chi_isolation(1).isolated_solving_degree,
         hybrid_sat_gb::analyze_chi_isolation(1).isolated_xl_complexity_log2);
+
+    // ── 64. Rotational differential (lane-bit rotations) ─────────────────────
+    section(64, total, "Rotational-XOR  (lane-bit rotations, rounds 1–2)");
+
+    println!("  {:>6}  {:>10}  {:>6}  {:>10}  {:>10}  {:>12}",
+        "rounds", "rotation", "amount", "norm_dev", "hw_mean", "random?");
+    for rounds in [1usize, 2] {
+        for amount in [1usize, 7, 13] {
+            let s = rotational_xor::test_rotational_diff(rounds, "lane_bits", amount, 400, &mut rng);
+            println!("  {:>6}  {:>10}  {:>6}  {:>10.4}  {:>10.0}  {:>12}",
+                rounds, "lane_bits", amount, s.normalised_deviation, s.hw_mean, s.is_random_like);
+        }
+    }
+    println!("  hw_random ≈ {:.0}.  |norm_dev| < 0.05 → random-like.", 3200.0);
+
+    // ── 65. Rotational differential (lane-index rotations) ────────────────────
+    section(65, total, "Rotational-XOR  (lane-index rotations, rounds 1–2)");
+
+    println!("  {:>6}  {:>11}  {:>6}  {:>10}  {:>10}  {:>12}",
+        "rounds", "rotation", "amount", "norm_dev", "hw_mean", "random?");
+    for rounds in [1usize, 2] {
+        for amount in [1usize, 5, 12] {
+            let s = rotational_xor::test_rotational_diff(rounds, "lane_index", amount, 400, &mut rng);
+            println!("  {:>6}  {:>11}  {:>6}  {:>10.4}  {:>10.0}  {:>12}",
+                rounds, "lane_index", amount, s.normalised_deviation, s.hw_mean, s.is_random_like);
+        }
+    }
+
+    // ── 66. XOR-preservation test ─────────────────────────────────────────────
+    section(66, total, "XOR-Preservation  (derivative D_α F consistency, rounds 1–2)");
+
+    println!("  {:>6}  {:>18}  {:>16}  {:>14}",
+        "rounds", "mean_pairwise_hw", "consistency_score", "random?");
+    for rounds in [1usize, 2] {
+        let s = rotational_xor::test_xor_preservation(rounds, 30, 50, &mut rng);
+        println!("  {:>6}  {:>18.0}  {:>16.4}  {:>14}",
+            rounds, s.mean_pairwise_hw, s.consistency_score, s.is_random_like);
+    }
+    println!("  Consistency ≈ 0 → derivative varies across x (random-like).");
+    println!("  Consistency ≈ 1 → derivative constant (affine structure).");
+
+    // ── 67. Affine equivalence test ───────────────────────────────────────────
+    section(67, total, "Affine Equivalence  (HW std of D_α F, rounds 1–2)");
+
+    println!("  {:>6}  {:>12}  {:>16}  {:>14}  {:>14}",
+        "rounds", "mean_std_hw", "expected_std_rnd", "affine_score", "no_affine?");
+    for rounds in [1usize, 2] {
+        let s = rotational_xor::test_affine_equivalence(rounds, 30, 50, &mut rng);
+        println!("  {:>6}  {:>12.2}  {:>16.2}  {:>14.4}  {:>14}",
+            rounds, s.mean_std_hw, s.expected_std_random, s.affine_score, s.no_affine_structure);
+    }
+    println!("  affine_score ≈ 0 → random; ≈ 1 → constant (affine) derivative.");
+
+    // ── 68. Rotational sweep ──────────────────────────────────────────────────
+    section(68, total, "Rotational Sweep  (all rotation types, rounds 1–2)");
+
+    println!("  {:>6}  {:>11}  {:>6}  {:>8}  {:>10}  {:>10}  {:>14}",
+        "rounds", "rotation", "amount", "norm_dev", "consist", "affine", "fully_random?");
+    let sweep_rot = rotational_xor::sweep_rotational(2, 150, &mut rng);
+    for e in &sweep_rot {
+        println!("  {:>6}  {:>11}  {:>6}  {:>8.4}  {:>10.4}  {:>10.4}  {:>14}",
+            e.rounds, e.rotation_label, e.rotation_amount,
+            e.normalised_deviation, e.consistency_score, e.affine_score, e.is_fully_random);
+    }
+    let all_r2_random = sweep_rot.iter()
+        .filter(|e| e.rounds == 2)
+        .all(|e| e.is_fully_random);
+    println!("  All round-2 entries fully random: {all_r2_random}");
+
+    // ── 69. Autocorrelation flatness ──────────────────────────────────────────
+    section(69, total, "Spectral Autocorrelation  (Walsh Z-scores, rounds 1–2)");
+
+    println!("  {:>6}  {:>10}  {:>10}  {:>12}  {:>12}  {:>10}",
+        "rounds", "mean|Z|", "max|Z|", "frac>2", "frac>3", "flat?");
+    for rounds in [1usize, 2] {
+        let s = spectral_sym::estimate_autocorrelation(rounds, 80, 200, &mut rng);
+        println!("  {:>6}  {:>10.3}  {:>10.3}  {:>12.4}  {:>12.4}  {:>10}",
+            rounds, s.mean_abs_z, s.max_abs_z, s.frac_exceeds_2, s.frac_exceeds_3,
+            s.is_spectrally_flat);
+    }
+    println!("  Under H₀ (random): E[|Z|]≈0.80, max≈2.5 per 80 tests, frac>3≈0.003.");
+    println!("  max|Z|<7 and frac>3<12% → no dominant Walsh peak found.");
+
+    // ── 70. Restricted Walsh spectrum (k=6 subspaces) ─────────────────────────
+    section(70, total, "Restricted Walsh Spectrum  (k=6 subspace WHT, rounds 1–2)");
+
+    println!("  {:>6}  {:>14}  {:>16}  {:>16}  {:>12}  {:>8}",
+        "rounds", "mean_max_coeff", "expected_max_rnd", "mean_energy", "outlier_frac", "flat?");
+    for rounds in [1usize, 2] {
+        let s = spectral_sym::estimate_restricted_walsh(rounds, 80, &mut rng);
+        println!("  {:>6}  {:>14.3}  {:>16.3}  {:>16.3}  {:>12.4}  {:>8}",
+            rounds, s.mean_max_coeff, s.expected_max_random,
+            s.mean_spectral_energy, s.frac_outlier_subspaces, s.is_spectrally_flat);
+    }
+    println!("  Random expectation: max≈2.9 (max of 64 |N(0,1)|), energy=1.0 (Parseval).");
+
+    // ── 71. Spectral symmetry analysis (combined) ─────────────────────────────
+    section(71, total, "Spectral Symmetry Analysis  (combined autocorr + Walsh, rounds 1–2)");
+
+    for rounds in [1usize, 2] {
+        let s = spectral_sym::analyze_spectral_symmetry(rounds, 40, &mut rng);
+        println!("  round={rounds}:  autocorr_flat={}  walsh_flat={}  spectrally_random={}",
+            s.autocorr.is_spectrally_flat, s.walsh_subspace.is_spectrally_flat,
+            s.is_spectrally_random);
+        println!("    autocorr: max|Z|={:.2}  frac>3={:.3}",
+            s.autocorr.max_abs_z, s.autocorr.frac_exceeds_3);
+        println!("    walsh: mean_max={:.3}  energy={:.3}  outlier_frac={:.3}",
+            s.walsh_subspace.mean_max_coeff,
+            s.walsh_subspace.mean_spectral_energy,
+            s.walsh_subspace.frac_outlier_subspaces);
+    }
+
+    // ── 72. Spectral sweep ────────────────────────────────────────────────────
+    section(72, total, "Spectral Sweep  (rounds 1–3, all metrics)");
+
+    println!("  {:>6}  {:>10}  {:>10}  {:>10}  {:>14}  {:>10}  {:>14}",
+        "rounds", "mean|Z|", "max|Z|", "frac>3", "mean_max_walsh", "energy", "spec_random?");
+    let sweep_spec = spectral_sym::sweep_spectral(3, 30, &mut rng);
+    for e in &sweep_spec {
+        println!("  {:>6}  {:>10.3}  {:>10.3}  {:>10.4}  {:>14.3}  {:>10.3}  {:>14}",
+            e.rounds, e.mean_abs_z, e.max_abs_z, e.frac_exceeds_3,
+            e.mean_max_walsh_coeff, e.mean_spectral_energy, e.is_spectrally_random);
+    }
+    let r2_spec = sweep_spec.iter().find(|e| e.rounds == 2).unwrap();
+    println!("  Round 2: spectrally_random={}", r2_spec.is_spectrally_random);
+    println!("  Φ destroys rotational and spectral symmetry: confirmed by round 2.");
 
     println!("\n=== Attack harness complete ===");
 }

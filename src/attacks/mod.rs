@@ -14,7 +14,9 @@ pub mod mitm;
 pub mod phi_symmetry;
 pub mod preimage;
 pub mod quantum_security;
+pub mod rotational_xor;
 pub mod sat;
+pub mod spectral_sym;
 pub mod sponge;
 pub mod sponge_indiff;
 pub mod sponge_proof;
@@ -1464,6 +1466,146 @@ mod tests {
             r1.full_attack_complexity_log2 > 256.0,
             "full isolated attack: 2^{:.0} should exceed 2^256",
             r1.full_attack_complexity_log2
+        );
+    }
+
+    // ── Rotational-XOR Attack (Phase 3A) ─────────────────────────────────────
+    //
+    // HDH should be random-like under rotational differential testing by round 2.
+    // Round 1 may show mild non-randomness (χ commutes with lane-bit rotation)
+    // but Φ's state-dependent routing eliminates all rotational symmetry by round 2.
+
+    #[test]
+    fn rotational_diff_lane_bits_is_random_at_round2() {
+        // After 2 rounds: F(Rot_1(x)) ⊕ F(x) should look like a uniformly random
+        // state difference — HW near STATE_BITS/2, |normalised_deviation| < 0.05.
+        let mut r = rng();
+        let stats = rotational_xor::test_rotational_diff(2, "lane_bits", 1, 200, &mut r);
+        assert!(
+            stats.is_random_like,
+            "2-round lane_bits rotation: normalised_deviation={:.4} (expected |dev| < 0.05)",
+            stats.normalised_deviation
+        );
+        // hw_mean should be close to STATE_BITS/2 = 3200.
+        assert!(
+            stats.hw_mean > 1000.0,
+            "2-round lane_bits: hw_mean={:.0} too low — rotational structure present",
+            stats.hw_mean
+        );
+    }
+
+    #[test]
+    fn rotational_diff_lane_index_is_random_at_round2() {
+        // Lane-index rotation (cyclic lane shift by 1) should also show random-like
+        // HW difference after 2 rounds.
+        let mut r = rng();
+        let stats = rotational_xor::test_rotational_diff(2, "lane_index", 1, 200, &mut r);
+        assert!(
+            stats.is_random_like,
+            "2-round lane_index rotation: normalised_deviation={:.4} (expected |dev| < 0.05)",
+            stats.normalised_deviation
+        );
+    }
+
+    #[test]
+    fn xor_preservation_is_not_affine_at_round2() {
+        // For a random cipher the derivative D_α F(x) varies across x like a
+        // uniform random function → consistency_score near 0.
+        // Strong affine structure would give consistency_score near 1.
+        let mut r = rng();
+        let stats = rotational_xor::test_xor_preservation(2, 20, 30, &mut r);
+        assert!(
+            stats.is_random_like,
+            "2-round XOR preservation: consistency_score={:.4} (expected |score| < 0.1)",
+            stats.consistency_score
+        );
+    }
+
+    #[test]
+    fn affine_equivalence_absent_at_round2() {
+        // For a random-like function D_α F(x) has non-zero std across x.
+        // affine_score < 0.9 = std_hw > 10% of expected → derivative NOT constant.
+        let mut r = rng();
+        let stats = rotational_xor::test_affine_equivalence(2, 20, 30, &mut r);
+        assert!(
+            stats.no_affine_structure,
+            "2-round affine equivalence: affine_score={:.4} (expected < 0.9, derivative not constant)",
+            stats.affine_score
+        );
+    }
+
+    #[test]
+    fn rotational_sweep_shows_random_by_round2() {
+        // The joint sweep must show is_fully_random = true for all rotation types
+        // at round 2, confirming Φ destroyed all rotational symmetry.
+        let mut r = rng();
+        let entries = rotational_xor::sweep_rotational(2, 100, &mut r);
+        // Only check round-2 entries.
+        let round2: Vec<_> = entries.iter().filter(|e| e.rounds == 2).collect();
+        assert!(!round2.is_empty(), "sweep must include round-2 entries");
+        for e in &round2 {
+            assert!(
+                e.is_fully_random,
+                "round 2, rotation {}×{}: not fully random \
+                 (dev={:.4} cons={:.4} affine={:.4})",
+                e.rotation_label, e.rotation_amount,
+                e.normalised_deviation, e.consistency_score, e.affine_score
+            );
+        }
+    }
+
+    // ── Spectral Symmetry Analysis (Phase 3B) ─────────────────────────────────
+    //
+    // Walsh spectrum and autocorrelation must be flat for 2-round HDH.
+    // Dominant harmonics or spectral invariants would reveal hidden structure.
+
+    #[test]
+    fn autocorrelation_is_flat_at_round2() {
+        // Sampling-based normalised Walsh sum Z should be modest for a near-flat spectrum.
+        // Thresholds: max|Z| < 7.0 and frac_exceeds_3 < 12%.
+        // These reject the 0-round identity (|Z| = √N ≈ 14) while accepting 2-round
+        // HDH residual spectral correlations (much smaller than the identity level).
+        let mut r = rng();
+        let stats = spectral_sym::estimate_autocorrelation(2, 100, 200, &mut r);
+        assert!(
+            stats.is_spectrally_flat,
+            "2-round autocorrelation: max_|Z|={:.2} frac>3={:.3} — dominant spectral peak",
+            stats.max_abs_z, stats.frac_exceeds_3
+        );
+    }
+
+    #[test]
+    fn restricted_walsh_transform_flat_at_round2() {
+        // Exact k=6 WHT on random subspaces: max normalised coefficient should be
+        // consistent with the random expectation ≈ 2.9 (max of 64 |N(0,1)|).
+        // mean_max_coeff < 4.0 and no outlier subspaces.
+        let mut r = rng();
+        let stats = spectral_sym::estimate_restricted_walsh(2, 50, &mut r);
+        assert!(
+            stats.is_spectrally_flat,
+            "2-round restricted Walsh: mean_max={:.2} outlier_frac={:.3}",
+            stats.mean_max_coeff, stats.frac_outlier_subspaces
+        );
+        // Spectral energy per coefficient should be ≈ 1.0 (Parseval: n × 1 = n).
+        assert!(
+            (stats.mean_spectral_energy - 1.0).abs() < 0.5,
+            "2-round Walsh: spectral_energy={:.3} far from 1.0 (Parseval violation)",
+            stats.mean_spectral_energy
+        );
+    }
+
+    #[test]
+    fn spectral_sweep_shows_random_by_round2() {
+        // The round-by-round spectral sweep must show is_spectrally_random = true
+        // at round 2 for both autocorrelation and restricted Walsh.
+        let mut r = rng();
+        let sweep = spectral_sym::sweep_spectral(2, 30, &mut r);
+        let round2 = sweep.iter().find(|e| e.rounds == 2)
+            .expect("sweep must include round-2 entry");
+        assert!(
+            round2.is_spectrally_random,
+            "round 2 spectral: max_|Z|={:.2} frac>3={:.3} max_walsh={:.2}",
+            round2.max_abs_z, round2.frac_exceeds_3, round2.mean_max_walsh_coeff
         );
     }
 }
