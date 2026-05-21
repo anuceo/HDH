@@ -1,4 +1,4 @@
-use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, hybrid, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, sat, sponge, sponge_indiff, sponge_proof, truncated};
+use hdh::attacks::{annihilator, boomerang, deep_integral, differential, distinguisher, gpu_algebraic, groebner_sim, hybrid, hybrid_sat_gb, integral, jacobian, linear, mitm, phi_symmetry, preimage, quantum_security, sat, sponge, sponge_indiff, sponge_proof, truncated};
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 
@@ -10,7 +10,7 @@ fn section(n: usize, total: usize, title: &str) {
 fn main() {
     println!("=== HDH χ Core — Algebraic & SAT Reconstruction Attack Harness ===");
     let mut rng = ChaCha20Rng::seed_from_u64(0x0123456789abcdef);
-    let total = 55;
+    let total = 63;
 
     // ── 1. Differential uniformity ─────────────────────────────────────────
     section(1, total, "Differential Uniformity  (64-bit quad, empirical)");
@@ -952,6 +952,136 @@ fn main() {
     println!("  Closure round (first round where ALL dims show random-like behaviour): {:?}",
         psweep.closure_round);
     println!("  Expected: closure_round = Some(2) — 2-round closure hypothesis confirmed.");
+
+    // ── 56. Symbolic round equations ──────────────────────────────────────────
+    section(56, total, "Gröbner Sim — Symbolic Round Equations  (n=6400, rounds 1–4)");
+
+    println!("  {:>6}  {:>4}  {:>14}  {:>14}  {:>10}  {:>12}  {:>12}",
+        "rounds", "d_eq", "total_mono_l2", "mono/eq", "log2_dens", "chi_terms", "theta_terms");
+    for r in 1..=4usize {
+        let sys = groebner_sim::construct_symbolic_system(6400, r);
+        println!("  {:>6}  {:>4}  {:>14.1}  {:>14}  {:>10.1}  {:>12}  {:>12}",
+            r, sys.eq_degree, sys.total_monomials_log2,
+            sys.monomials_per_eq, sys.log2_density,
+            sys.chi_local_terms, sys.theta_cross_terms);
+    }
+    println!("  log2_density << 0 → system is extremely sparse (structurally hard for XL).");
+
+    // ── 57. Monomial interaction graph ────────────────────────────────────────
+    section(57, total, "Gröbner Sim — Monomial Interaction Graph  (n=6400, rounds 1–3)");
+
+    println!("  {:>6}  {:>12}  {:>10}  {:>12}  {:>12}  {:>10}  {:>12}",
+        "rounds", "log2_edges", "avg_deg", "density", "components", "no_block", "fill_in");
+    for r in 1..=3usize {
+        let d_eq = groebner_sim::degree_for_rounds(r);
+        let g = groebner_sim::analyze_monomial_graph(6400, r, d_eq);
+        println!("  {:>6}  {:>12.1}  {:>10.0}  {:>12.6}  {:>12}  {:>10}  {:>12.0}",
+            r, g.log2_n_edges, g.avg_degree, g.graph_density,
+            g.n_connected_components, g.no_block_structure, g.fill_in_factor);
+    }
+    println!("  θ ring-diffusion makes graph fully connected after 1 round.");
+    println!("  High fill-in factor → Gaussian elimination rapidly densifies sparse rows.");
+
+    // ── 58. Elimination order comparison ─────────────────────────────────────
+    section(58, total, "Gröbner Sim — Elimination Order Comparison  (n=6400, d_eq=3)");
+
+    let orders = groebner_sim::compare_elimination_orders(6400, 6400, 3);
+    println!("  {:>16}  {:>10}  {:>12}  {:>14}  {:>14}  {:>12}",
+        "order", "d_XL", "macaulay_l2", "xl_compl_l2", "saved_vs_lex", "infeasible");
+    for o in &orders {
+        println!("  {:>16}  {:>10}  {:>12.0}  {:>14.0}  {:>14.0}  {:>12}",
+            o.order_name, o.solving_degree, o.macaulay_log2,
+            o.xl_complexity_log2, o.bits_saved_vs_lex, o.is_infeasible);
+    }
+    println!("  All orderings exceed 2^{{256}} — no ordering choice rescues the attacker.");
+
+    // ── 59. F4/F5 degree growth simulation ───────────────────────────────────
+    section(59, total, "Gröbner Sim — F4/F5 Macaulay Growth  (n=6400, d_eq=3)");
+
+    let sim = groebner_sim::simulate_f4_degree_growth(6400, 6400, 3);
+    println!("  Solving degree d_XL = {}.  Memory infeasible at d = {}.",
+        sim.solving_degree, sim.memory_infeasible_at_degree);
+    println!("  {:>6}  {:>14}  {:>12}  {:>14}  {:>12}  {:>8}",
+        "degree", "macaulay_cols", "span_rows", "log2_density", "memory_l2", "fits?");
+    for s in &sim.steps {
+        println!("  {:>6}  {:>14.0}  {:>12.0}  {:>14.0}  {:>12.0}  {:>8}",
+            s.degree, s.macaulay_cols_log2, s.span_rows_log2,
+            s.log2_initial_density, s.memory_log2, s.fits_in_memory);
+    }
+    println!("  XL complexity at d_XL: 2^{:.0}", sim.xl_complexity_log2);
+    println!("  Monomial explosion rate near d_XL: 2^{:.2} per degree step.", sim.monomial_explosion_rate);
+
+    // ── 60. Round-by-round degree growth projection ───────────────────────────
+    section(60, total, "Gröbner Sim — Round Degree Growth Projection  (n=6400)");
+
+    let proj = groebner_sim::project_round_degree_growth(6400);
+    println!("  {:>6}  {:>6}  {:>8}  {:>12}  {:>14}  {:>14}  {:>12}",
+        "rounds", "d_eq", "d_XL", "macaulay_l2", "xl_compl_l2", "hybrid_l2", "infeas256?");
+    for e in &proj {
+        println!("  {:>6}  {:>6}  {:>8}  {:>12.0}  {:>14.0}  {:>14.0}  {:>12}",
+            e.rounds, e.eq_degree, e.solving_degree, e.macaulay_log2,
+            e.xl_complexity_log2, e.hybrid_complexity_log2, e.is_infeasible_256bit);
+    }
+    println!("  All rounds exceed 2^{{256}} — complexity is monotone with rounds.");
+
+    // ── 61. Variable fixing (hybrid) analysis ─────────────────────────────────
+    section(61, total, "Hybrid SAT/GB — Variable Fixing  (n=6400, d_eq=3)");
+
+    let vf = hybrid_sat_gb::analyze_variable_fixing(6400, 6400, 3);
+    println!("  pure_gb_log2  = 2^{:.0}  (no fixing)",  vf.pure_gb_log2);
+    println!("  hybrid_min    = 2^{:.0}  at k={}",       vf.hybrid_minimum_log2, vf.optimal_k);
+    println!("  improvement   = {:.0} bits over pure GB", vf.improvement_log2);
+    println!("  no_hybrid_adv = {} (hybrid min > 2^{{256}})", vf.no_hybrid_advantage_256bit);
+    println!("  {:>8}  {:>8}  {:>8}  {:>12}  {:>12}  {:>10}",
+        "k_fixed", "frac%", "resid_n", "search_l2", "gb_l2", "total_l2");
+    for p in &vf.points {
+        println!("  {:>8}  {:>7.1}%  {:>8}  {:>12.0}  {:>12.0}  {:>10.0}",
+            p.k_fixed, p.k_fraction * 100.0, p.residual_n,
+            p.search_log2, p.gb_complexity_log2, p.total_log2);
+    }
+    println!("  Even at optimal k, complexity >> 2^{{256}}: no hybrid advantage.");
+
+    // ── 62. Partial inversion + lane elimination ──────────────────────────────
+    section(62, total, "Hybrid SAT/GB — Partial Inversion & Lane Elimination  (round 1–2)");
+
+    for r in [1usize, 2] {
+        let inv = hybrid_sat_gb::model_partial_inversion(r);
+        println!("  [Partial inversion, round {}]", r);
+        println!("    fixed_per_share = {}  residual_entropy = {:.0} bits",
+            inv.total_fixed_per_share, inv.total_residual_entropy);
+        println!("    θ prevents independence: {}  residual_gb: 2^{:.0}  infeasible: {}",
+            inv.theta_prevents_lane_independence, inv.residual_gb_complexity_log2,
+            inv.is_infeasible_256bit);
+    }
+    for elim_n in [1usize, 5] {
+        let elim = hybrid_sat_gb::analyze_lane_elimination(1, elim_n);
+        println!("  [Lane elimination ({} lanes), round 1]", elim_n);
+        println!("    residual_n = {}  induced_degree = {}  is_decomposable = {}",
+            elim.residual_n_vars, elim.induced_eq_degree, elim.is_decomposable);
+        println!("    gb_after: 2^{:.0}  makes_worse: {}",
+            elim.gb_complexity_log2, elim.elimination_makes_things_worse);
+    }
+    println!("  Lane elimination raises degree → net complexity gain for attacker.");
+
+    // ── 63. χ isolation attack ────────────────────────────────────────────────
+    section(63, total, "Hybrid SAT/GB — χ Isolation Attack  (rounds 1–3)");
+
+    println!("  {:>6}  {:>12}  {:>14}  {:>14}  {:>14}  {:>10}",
+        "rounds", "isolable", "iso_chi_deg", "iso_xl_l2", "full_atk_l2", "infeas256?");
+    for r in 1..=3usize {
+        let iso = hybrid_sat_gb::analyze_chi_isolation(r);
+        println!("  {:>6}  {:>12}  {:>14}  {:>14.0}  {:>14.0}  {:>10}",
+            r, iso.chi_is_isolable, iso.isolated_chi_degree,
+            iso.isolated_xl_complexity_log2, iso.full_attack_complexity_log2,
+            iso.is_infeasible_256bit);
+        if !iso.chi_is_isolable {
+            println!("    ↳ {}", iso.isolation_failure_reason);
+        }
+    }
+    println!("  Even when χ is isolable (round 1), the degree-2 system in 6400 vars");
+    println!("  has solving degree ≈ {} → complexity 2^{:.0} >> 2^{{256}}.",
+        hybrid_sat_gb::analyze_chi_isolation(1).isolated_solving_degree,
+        hybrid_sat_gb::analyze_chi_isolation(1).isolated_xl_complexity_log2);
 
     println!("\n=== Attack harness complete ===");
 }

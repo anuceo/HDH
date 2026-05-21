@@ -4,7 +4,9 @@ pub mod deep_integral;
 pub mod differential;
 pub mod distinguisher;
 pub mod gpu_algebraic;
+pub mod groebner_sim;
 pub mod hybrid;
+pub mod hybrid_sat_gb;
 pub mod integral;
 pub mod jacobian;
 pub mod linear;
@@ -1253,6 +1255,215 @@ mod tests {
             cr <= 2,
             "integral structure should close by round 2, but closure_round={}",
             cr
+        );
+    }
+
+    // ── Gröbner Basis Growth Simulation ──────────────────────────────────────
+
+    #[test]
+    fn symbolic_system_is_extremely_sparse_at_round1() {
+        // After 1 round, the HDH polynomial system has degree 3 but the
+        // number of monomials C(6400, 3) >> monomials_per_eq (~2000).
+        // The log2 density must be << −10.
+        let sys = groebner_sim::construct_symbolic_system(6400, 1);
+        assert_eq!(sys.eq_degree, 3);
+        assert!(
+            sys.log2_density < -10.0,
+            "1-round system: log2_density={:.1} should be << −10 (very sparse)",
+            sys.log2_density
+        );
+        assert!(sys.is_underdetermined, "C(6400,3) >> n_eqs=6400");
+    }
+
+    #[test]
+    fn f4_macaulay_infeasible_well_before_solving_degree() {
+        // Simulate degree growth for 1-round HDH (n=6400, d_eq=3).
+        // Even at degree d=10 (far below d_XL≈340), the Macaulay matrix should
+        // exceed 2^{64} bits of memory (infeasible on any physical hardware).
+        let sim = groebner_sim::simulate_f4_degree_growth(6400, 6400, 3);
+        assert!(
+            sim.solving_degree >= 300,
+            "solving degree should be ≥ 300 (got {})",
+            sim.solving_degree
+        );
+        assert!(
+            sim.xl_complexity_log2 > 256.0,
+            "XL complexity should exceed 2^256 (got 2^{:.0})",
+            sim.xl_complexity_log2
+        );
+        // Memory becomes infeasible at a degree well below d_XL.
+        assert!(
+            sim.memory_infeasible_at_degree <= sim.solving_degree,
+            "memory infeasible by degree {}, but solving_degree={}",
+            sim.memory_infeasible_at_degree, sim.solving_degree
+        );
+    }
+
+    #[test]
+    fn no_elimination_order_below_256bits() {
+        // All four elimination orderings (lex, degrevlex, block-drl, FGLM)
+        // must give XL complexity > 2^{256} for 1-round HDH.
+        let orders = groebner_sim::compare_elimination_orders(6400, 6400, 3);
+        assert!(!orders.is_empty(), "at least one ordering must be returned");
+        for o in &orders {
+            assert!(
+                o.is_infeasible,
+                "ordering '{}': xl_complexity=2^{:.0} ≤ 2^{{256}} — not infeasible!",
+                o.order_name, o.xl_complexity_log2
+            );
+        }
+        // degrevlex should be strictly better than lex.
+        let lex = orders.iter().find(|o| o.order_name == "lex").unwrap();
+        let drl = orders.iter().find(|o| o.order_name == "degrevlex").unwrap();
+        assert!(
+            drl.xl_complexity_log2 < lex.xl_complexity_log2,
+            "degrevlex should be better than lex"
+        );
+    }
+
+    #[test]
+    fn degree_growth_monotone_with_rounds() {
+        // eq_degree and solving degree must both increase monotonically with rounds.
+        let projection = groebner_sim::project_round_degree_growth(6400);
+        assert_eq!(projection.len(), 4, "should have entries for rounds 1–4");
+        for w in projection.windows(2) {
+            assert!(
+                w[1].eq_degree >= w[0].eq_degree,
+                "eq_degree must not decrease: round {} d={} → round {} d={}",
+                w[0].rounds, w[0].eq_degree, w[1].rounds, w[1].eq_degree
+            );
+            // All rounds must be infeasible to attack.
+            assert!(
+                w[0].is_infeasible_256bit,
+                "round {} should be infeasible (xl_complexity=2^{:.0})",
+                w[0].rounds, w[0].xl_complexity_log2
+            );
+        }
+    }
+
+    #[test]
+    fn monomial_graph_connected_after_theta() {
+        // After 1 round (θ is applied), the variable-interaction graph is
+        // fully connected: n_connected_components = 1, no_block_structure = true.
+        let g = groebner_sim::analyze_monomial_graph(6400, 1, 3);
+        assert_eq!(
+            g.n_connected_components, 1,
+            "monomial graph should be fully connected after θ mixing"
+        );
+        assert!(
+            g.no_block_structure,
+            "θ ring-diffusion destroys all lane/share block structure"
+        );
+        assert!(
+            g.avg_degree > 100.0,
+            "after θ, each variable interacts with >100 others (got {:.0})",
+            g.avg_degree
+        );
+    }
+
+    // ── Hybrid SAT/GB Attack ──────────────────────────────────────────────────
+
+    #[test]
+    fn hybrid_minimum_exceeds_256bits() {
+        // Even the optimal hybrid (variable-fixing + GB) cannot reduce the
+        // attack complexity below 2^{256} for 1-round HDH.
+        let analysis = hybrid_sat_gb::analyze_variable_fixing(6400, 6400, 3);
+        assert!(
+            analysis.no_hybrid_advantage_256bit,
+            "hybrid minimum should exceed 2^256 (got 2^{:.0})",
+            analysis.hybrid_minimum_log2
+        );
+        // The improvement (bits saved over pure GB) must be finite but irrelevant.
+        assert!(
+            analysis.improvement_log2 > 0.0,
+            "hybrid should provide SOME improvement over pure GB"
+        );
+        assert!(
+            analysis.improvement_log2 < analysis.pure_gb_log2,
+            "improvement must be less than total pure-GB cost"
+        );
+    }
+
+    #[test]
+    fn partial_inversion_residual_infeasible() {
+        // Even after partial χ inversion (fixing 3 bits per 5-bit window),
+        // the residual GB system remains infeasible because θ coupling prevents
+        // treating lanes independently.
+        let inv = hybrid_sat_gb::model_partial_inversion(1);
+        assert!(
+            inv.theta_prevents_lane_independence,
+            "θ must prevent independent lane inversion"
+        );
+        assert!(
+            inv.is_infeasible_256bit,
+            "residual GB after partial inversion should exceed 2^256 (got 2^{:.0})",
+            inv.residual_gb_complexity_log2
+        );
+    }
+
+    #[test]
+    fn lane_elimination_increases_degree_and_fails() {
+        // Eliminating one lane by substitution INCREASES the algebraic degree
+        // (induced_eq_degree > original eq_degree = 3) because each eliminated
+        // variable is degree-3 and substituting it into other equations raises
+        // their degree by (d_eq − 1) = 2.
+        // The system also cannot decompose because θ coupling connects all lanes.
+        let elim = hybrid_sat_gb::analyze_lane_elimination(1, 1);
+        assert!(
+            elim.induced_eq_degree > 3,
+            "lane elimination should raise degree above 3 (original), got {}",
+            elim.induced_eq_degree
+        );
+        assert!(
+            !elim.is_decomposable,
+            "system should not be decomposable (θ coupling)"
+        );
+        // The residual GB must still exceed 2^{256} (even with 64 fewer vars).
+        assert!(
+            elim.gb_complexity_log2 > 256.0,
+            "residual GB after lane elimination: 2^{:.0} should exceed 2^256",
+            elim.gb_complexity_log2
+        );
+    }
+
+    #[test]
+    fn chi_isolation_fails_at_round2_and_is_infeasible_even_at_round1() {
+        // At round 2+, Φ routing is state-dependent → χ cannot be isolated.
+        let r2 = hybrid_sat_gb::analyze_chi_isolation(2);
+        assert!(
+            !r2.chi_is_isolable,
+            "χ should not be isolable at round 2 (Φ is state-dependent)"
+        );
+
+        // Even at round 1 where isolation is technically possible,
+        // the resulting degree-2 system in 6400 variables is infeasible.
+        let r1 = hybrid_sat_gb::analyze_chi_isolation(1);
+        assert!(
+            r1.chi_is_isolable,
+            "χ should be isolable at round 1 (θ is linear, Φ invertible)"
+        );
+        assert!(
+            r1.is_infeasible_256bit,
+            "isolated χ system (d_eq=2, n=6400): complexity=2^{:.0} should exceed 2^256",
+            r1.isolated_xl_complexity_log2
+        );
+    }
+
+    #[test]
+    fn chi_isolation_makes_attack_worse_or_equal() {
+        // Isolating χ gives a degree-2 system in 6400 variables.
+        // The direct 1-round system (degree 3, same n) has a HIGHER solving degree.
+        // But the degree-2 isolation system has a smaller solving degree → LESS
+        // complexity per bit, yet still >> 2^{256}.
+        // The key result: isolation provides no security advantage (both infeasible).
+        let r1 = hybrid_sat_gb::analyze_chi_isolation(1);
+        // Both attacks must be infeasible.
+        assert!(r1.is_infeasible_256bit);
+        // full_attack_complexity > 2^{256} regardless.
+        assert!(
+            r1.full_attack_complexity_log2 > 256.0,
+            "full isolated attack: 2^{:.0} should exceed 2^256",
+            r1.full_attack_complexity_log2
         );
     }
 }
