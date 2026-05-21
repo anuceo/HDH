@@ -16,7 +16,7 @@
 /// 5. DegreeGrowthProjection  – round-by-round complexity sweep.
 
 use crate::attacks::gpu_algebraic::{
-    estimate_solving_degree, hybrid_attack_optimum, log2_binom, xl_complexity, MQSystemParams,
+    estimate_solving_degree, hybrid_attack_optimum, log2_binom,
 };
 
 const OMEGA: f64 = 2.37;

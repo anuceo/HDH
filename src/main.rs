@@ -26,7 +26,7 @@
 //!   Rounds  : 6 per permutation call
 
 use hdh::algorithm::{
-    hdh_hash, hdh_hash_256, hdh_hash_512, hdh_hash_1024, hdh_prf,
+    hdh_hash, hdh_hash_256, hdh_hash_512, hdh_prf,
     RATE_BYTES, CAPACITY_BYTES,
 };
 use std::io::Read;

@@ -62,13 +62,6 @@ impl ToySimulator {
         x
     }
 
-    /// True when inserting π(x)=y would cause a consistency failure:
-    /// the forward transcript already has π(x)=z ≠ y.
-    fn would_fail_forward(&self, x: u32, y: u32) -> bool {
-        let x = x % self.n_cap;
-        match self.fwd.get(&x) { Some(&z) => z != y, None => false }
-    }
-
     fn fresh_output(&self, rng: &mut impl Rng) -> u32 {
         loop {
             let y = rng.gen::<u32>() % self.n_cap;
@@ -83,7 +76,6 @@ impl ToySimulator {
         }
     }
 
-    fn n_forward_entries(&self) -> usize { self.fwd.len() }
 }
 
 // ── 1. AdaptiveOracleStats ────────────────────────────────────────────────────

@@ -70,27 +70,6 @@ fn initial_state() -> State {
 
 // ── state ↔ bytes ─────────────────────────────────────────────────────────────
 
-/// Deserialize 800 state bytes into a `State`, setting parity from shares.
-fn bytes_to_state(b: &[u8; STATE_BYTES]) -> State {
-    let mut s = State::zero();
-    for i in 0..25 {
-        s.s1[i] = u64::from_le_bytes(b[i * 8..(i + 1) * 8].try_into().unwrap());
-    }
-    for i in 0..25 {
-        s.s2[i] = u64::from_le_bytes(b[200 + i * 8..200 + (i + 1) * 8].try_into().unwrap());
-    }
-    for i in 0..25 {
-        s.s3[i] = u64::from_le_bytes(b[400 + i * 8..400 + (i + 1) * 8].try_into().unwrap());
-    }
-    for i in 0..25 {
-        s.s4[i] = u64::from_le_bytes(b[600 + i * 8..600 + (i + 1) * 8].try_into().unwrap());
-    }
-    for i in 0..25 {
-        s.parity[i] = s.s1[i] ^ s.s2[i] ^ s.s3[i] ^ s.s4[i];
-    }
-    s
-}
-
 /// Serialize the rate portion of `state` into `out[0..RATE_BYTES]`.
 fn state_to_rate_bytes(state: &State, out: &mut [u8; RATE_BYTES]) {
     for i in 0..25 {

@@ -15,10 +15,8 @@
 ///   - Chi isolation fails:   Φ routing is state-dependent past round 1.
 
 use crate::attacks::gpu_algebraic::{
-    estimate_solving_degree, hybrid_attack_optimum, log2_binom, xl_complexity, MQSystemParams,
+    estimate_solving_degree, hybrid_attack_optimum,
 };
-
-const OMEGA: f64 = 2.37;
 
 // ── HDH structural constants ──────────────────────────────────────────────────
 const N_SHARES: usize = 4;
