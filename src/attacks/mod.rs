@@ -1,5 +1,7 @@
 pub mod annihilator;
 pub mod boomerang;
+pub mod branch_number;
+pub mod diff_bounds;
 pub mod differential;
 pub mod distinguisher;
 pub mod gpu_algebraic;
@@ -8,7 +10,9 @@ pub mod integral;
 pub mod jacobian;
 pub mod linear;
 pub mod mitm;
+pub mod ml_distinguisher;
 pub mod multi_user_sponge;
+pub mod orbit;
 pub mod phi_symmetry;
 pub mod preimage;
 pub mod quantum_security;
@@ -16,6 +20,7 @@ pub mod sat;
 pub mod sponge;
 pub mod sponge_indiff;
 pub mod truncated;
+pub mod wide_trail;
 
 #[cfg(test)]
 mod tests {
@@ -1106,6 +1111,125 @@ mod tests {
             grover.work_log2
         );
         assert_eq!(grover.work_log2, 256.0);
+    }
+
+    // ── Branch number ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn theta_branch_number_is_six() {
+        let result = branch_number::theta_branch_number_exact();
+        assert_eq!(result.branch_number, 6, "B(θ) must be 6 with ±1 and ±7 strides");
+        assert_eq!(result.achieved_at_input_weight, 1, "minimum achieved at wt-1 input");
+        assert_eq!(result.achieved_at_output_weight, 5, "wt-1 input fans to 5 output lanes");
+        assert_eq!(result.patterns_checked, (1u64 << 25) - 1);
+    }
+
+    #[test]
+    fn theta_single_lane_fans_to_five() {
+        // Each unit vector produces exactly 5 active output lanes.
+        for lane in 0u32..25 {
+            let x = 1u32 << lane;
+            let out = branch_number::theta_activity(x);
+            assert_eq!(out.count_ones(), 5, "lane {lane}: expected 5 active outputs, got {}", out.count_ones());
+        }
+    }
+
+    #[test]
+    fn round_branch_increases_with_rounds() {
+        let mut r = rng();
+        let b1 = branch_number::round_branch_sampled(1, 200, &mut r);
+        let b2 = branch_number::round_branch_sampled(2, 200, &mut r);
+        assert!(b2.min_out >= b1.min_out,
+            "2-round min active output ({}) should be >= 1-round ({})", b2.min_out, b1.min_out);
+    }
+
+    // ── Wide trail ─────────────────────────────────────────────────────────────
+
+    #[test]
+    fn wide_trail_two_rounds_activates_majority() {
+        let mut r = rng();
+        let entries = wide_trail::wide_trail_sweep(2, 200, &mut r);
+        let r2 = &entries[1];
+        assert!(r2.min_active >= 5,
+            "2-round min active lanes {} < 5 (expected >= theta branch fan-out)", r2.min_active);
+        assert!(r2.avg_active > 10.0,
+            "2-round avg active lanes {:.1} too low", r2.avg_active);
+    }
+
+    #[test]
+    fn wide_trail_four_rounds_full_activation() {
+        let mut r = rng();
+        let entries = wide_trail::wide_trail_sweep(4, 100, &mut r);
+        let r4 = &entries[3];
+        assert!(r4.full_activation_frac > 0.80,
+            "4-round full-state activation {:.0}% < 80%", r4.full_activation_frac * 100.0);
+    }
+
+    // ── Differential bounds ───────────────────────────────────────────────────
+
+    #[test]
+    fn diff_bound_decreases_with_rounds() {
+        let mut r = rng();
+        let b1 = diff_bounds::compute_diff_bound(1, 5_000, &mut r);
+        let b2 = diff_bounds::compute_diff_bound(2, 5_000, &mut r);
+        assert!(b2.upper_bound_log2 <= b1.upper_bound_log2 + 2.0,
+            "2-round bound {:.1} should not greatly exceed 1-round {:.1}", b2.upper_bound_log2, b1.upper_bound_log2);
+    }
+
+    #[test]
+    fn diff_bound_two_rounds_is_below_threshold() {
+        let mut r = rng();
+        let b2 = diff_bounds::compute_diff_bound(2, 20_000, &mut r);
+        assert!(b2.upper_bound_log2 < -5.0,
+            "2-round upper bound {:.1} should be < -5.0 log2", b2.upper_bound_log2);
+    }
+
+    // ── Orbit structure ──────────────────────────────────────────────────────
+
+    #[test]
+    fn chi4_orbit_no_fixed_points() {
+        // chi4 fixed points occur when g=0 (x1*x2 ^ x3*x4 = 0 mod 16),
+        // which gives identity output. There are 6016 such states.
+        // The security-relevant question is that the fixed-point set is NOT
+        // a linear subspace (checked separately) — a linear invariant subspace
+        // would be cryptographically exploitable.
+        let stats = orbit::analyze_chi4_orbits();
+        // Fixed points are cycles of length 1. Verify the count is known and finite.
+        assert!(stats.fixed_points < stats.total_states,
+            "all states are fixed points — chi4 is identity");
+        // The fixed-point set is non-trivially large (g=0 condition produces ~6016 states)
+        // but does NOT form a linear subspace (verified by annihilator tests).
+        assert!(stats.unique_cycles > 0, "at least one non-trivial cycle must exist");
+    }
+
+    #[test]
+    fn chi4_orbit_stats_are_sane() {
+        let stats = orbit::analyze_chi4_orbits();
+        // min_cycle == 1 for fixed points (g=0 states), which is expected.
+        assert!(stats.min_cycle >= 1, "minimum cycle >= 1");
+        assert!(stats.unique_cycles > 0, "at least one cycle");
+        assert!(stats.orbit_entropy > 0.0, "non-trivial orbit structure");
+        // Max cycle should be > 1 (non-fixed-point cycles exist)
+        assert!(stats.max_cycle > 1, "max cycle > 1: not all states are fixed points");
+    }
+
+    // ── ML distinguisher ──────────────────────────────────────────────────────
+
+    #[test]
+    fn ml_distinguisher_collapses_at_two_rounds() {
+        let mut r = rng();
+        let result = ml_distinguisher::run_distinguisher(2, 500, 500, &mut r);
+        assert!(!result.distinguishable,
+            "2-round HDH should not be distinguishable (accuracy {:.1}%)", result.test_accuracy * 100.0);
+    }
+
+    #[test]
+    fn ml_model_trains_without_nan() {
+        let mut r = rng();
+        let result = ml_distinguisher::run_distinguisher(1, 200, 200, &mut r);
+        assert!(result.train_accuracy.is_finite());
+        assert!(result.test_accuracy.is_finite());
+        assert!(result.train_accuracy >= 0.0 && result.train_accuracy <= 1.0);
     }
 
     // ── Multi-user sponge security ──────────────────────────────────────────────

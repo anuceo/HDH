@@ -325,3 +325,20 @@ pub fn check_zero_sum_chi4(dim: usize, n_cosets: usize, rng: &mut impl Rng) -> Z
 
     ZeroSumStats { dim, cosets_tested: n_cosets, nonzero_sum_count: nonzero, accumulated_xor: accumulated }
 }
+
+// ── XOR helper ────────────────────────────────────────────────────────────────
+
+/// XOR two states together, updating parity.
+pub fn xor_states(a: &State, b: &State) -> State {
+    let mut out = a.clone();
+    for i in 0..25 {
+        out.s1[i] ^= b.s1[i];
+        out.s2[i] ^= b.s2[i];
+        out.s3[i] ^= b.s3[i];
+        out.s4[i] ^= b.s4[i];
+    }
+    for i in 0..25 {
+        out.parity[i] = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
+    }
+    out
+}
