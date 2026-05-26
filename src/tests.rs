@@ -48,13 +48,16 @@ mod tests {
     #[test]
     fn theta_parity_invariant() {
         // θ is linear and per-share; parity must satisfy
-        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next].
+        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next] ^ parity[far_a] ^ parity[far_b].
         let s = chi::chi(&fixed_state(31415));
         let out = theta::theta(&s);
         for i in 0..25 {
-            let prev = (i + 24) % 25;
-            let next = (i + 1) % 25;
-            let expected = s.parity[prev] ^ s.parity[i] ^ s.parity[next];
+            let prev  = (i + 24) % 25;
+            let next  = (i + 1)  % 25;
+            let far_a = (i + 7)  % 25;
+            let far_b = (i + 18) % 25;
+            let expected = s.parity[i] ^ s.parity[prev] ^ s.parity[next]
+                         ^ s.parity[far_a] ^ s.parity[far_b];
             assert_eq!(out.parity[i], expected, "theta parity mismatch at lane {i}");
             // also verify parity matches actual share XOR
             let actual = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
@@ -64,16 +67,17 @@ mod tests {
 
     #[test]
     fn theta_cross_lane_diffusion() {
-        // a single-lane perturbation must reach its two neighbours after θ
+        // A single-lane perturbation must reach its four neighbours after θ.
+        // With ±1 and ±7 strides, a flip at lane 12 affects lanes {5, 11, 12, 13, 19}.
         let s = fixed_state(271828);
         let mut perturbed = s.clone();
         perturbed.s1[12] ^= 1;
         let a = theta::theta(&s);
         let b = theta::theta(&perturbed);
-        // lanes 11, 12, 13 must differ; all others must be identical
+        let affected = [5usize, 11, 12, 13, 19];
         for i in 0..25 {
             let changed = (a.s1[i] ^ b.s1[i]) != 0;
-            if i == 11 || i == 12 || i == 13 {
+            if affected.contains(&i) {
                 assert!(changed, "theta failed to propagate to lane {i}");
             } else {
                 assert!(!changed, "theta unexpectedly changed lane {i}");
@@ -208,26 +212,26 @@ mod tests {
     fn round_known_answer_r0() {
         let s = fixed_state(0x0123456789abcdef);
         let out = round(s, 0);
-        assert_eq!(out.s1[0],     0x1677231c61220912, "round0 s1[0] mismatch");
-        assert_eq!(out.s2[0],     0x9a3529301850d22a, "round0 s2[0] mismatch");
-        assert_eq!(out.s3[0],     0x4c9de3100f71e878, "round0 s3[0] mismatch");
-        assert_eq!(out.s4[0],     0x7c35d6bca531526e, "round0 s4[0] mismatch");
-        assert_eq!(out.parity[0], 0x4dc8300ceb4a9aa1, "round0 parity[0] mismatch");
-        assert_eq!(out.s1[12],    0xc08c64643eb87574, "round0 s1[12] mismatch");
-        assert_eq!(out.s2[24],    0x465e4d18b806efa6, "round0 s2[24] mismatch");
+        assert_eq!(out.s1[0],     0x21947a2c1f9d155c, "round0 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x9c2c3541ccfb7050, "round0 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x8aca6966136c5cfc, "round0 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0xfc14f40c486a0b9d, "round0 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0xeeb84187a556b8e5, "round0 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x78836d24a6d6d1a8, "round0 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0x63dbc49328e0aa1d, "round0 s2[24] mismatch");
     }
 
     #[test]
     fn round_known_answer_r1() {
         let s = fixed_state(0x0123456789abcdef);
         let out = round(s, 1);
-        assert_eq!(out.s1[0],     0xda8da8fffaf8424a, "round1 s1[0] mismatch");
-        assert_eq!(out.s2[0],     0x96b8010a521c801c, "round1 s2[0] mismatch");
-        assert_eq!(out.s3[0],     0xc6747804a4011c1d, "round1 s3[0] mismatch");
-        assert_eq!(out.s4[0],     0x36623a323e218c6b, "round1 s4[0] mismatch");
-        assert_eq!(out.parity[0], 0xd33525d3b6cb576b, "round1 parity[0] mismatch");
-        assert_eq!(out.s1[12],    0xfc0e1c205bfdfd6a, "round1 s1[12] mismatch");
-        assert_eq!(out.s2[24],    0xab78b015265214dd, "round1 s2[24] mismatch");
+        assert_eq!(out.s1[0],     0xe95fa5e9c7822fc1, "round1 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x24da2c571e47f510, "round1 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x2a154fd6fefcf8fc, "round1 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0xcf4f0422b956d79e, "round1 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x94ef889f34b549d4, "round1 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x4d2d214b268eef12, "round1 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0xe0c1cb82d72b11fe, "round1 s2[24] mismatch");
     }
 
     #[test]
@@ -237,13 +241,13 @@ mod tests {
         for i in 0..4 {
             out = round(out, i);
         }
-        assert_eq!(out.s1[0],     0xf2ab96e88584de3b, "4-round s1[0] mismatch");
-        assert_eq!(out.s2[0],     0xb56d7205d067a37e, "4-round s2[0] mismatch");
-        assert_eq!(out.s3[0],     0x9ba69bca39458315, "4-round s3[0] mismatch");
-        assert_eq!(out.s4[0],     0x44d6043b4a98c338, "4-round s4[0] mismatch");
-        assert_eq!(out.parity[0], 0x72f0e6ed239398f0, "4-round parity[0] mismatch");
-        assert_eq!(out.s1[12],    0x2a9342d68bd31ac0, "4-round s1[12] mismatch");
-        assert_eq!(out.s2[24],    0x98aa4ebcfb57e8d3, "4-round s2[24] mismatch");
+        assert_eq!(out.s1[0],     0x8311c0e4b3a0d63d, "4-round s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x46bee540073cda87, "4-round s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x982520b022b2e77c, "4-round s3[0] mismatch");
+        assert_eq!(out.s4[0],     0x6824912d82939b4c, "4-round s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x4a650be7ac73967e, "4-round parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x4cedbd1b38f381dd, "4-round s1[12] mismatch");
+        assert_eq!(out.s2[24],    0xba16dba67bc05ea2, "4-round s2[24] mismatch");
     }
 
     #[test]

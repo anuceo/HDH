@@ -496,20 +496,23 @@ mod tests {
 
     #[test]
     fn integral_one_round_has_low_degree_structure() {
-        // After 1 round, HDH has degree ≤ 3 for most input directions.
-        // At dim=4 (16 evaluations per cube), ≥ 70% of random cubes should
-        // give XOR sum = 0, and avg_balanced_bits should exceed 6000 (most
-        // output bits are balanced for every tested cube).
+        // After 1 round, algebraic degree is still sub-maximal for most
+        // directions.  With the ±7 theta stride, diffusion is faster than the
+        // original ±1-only design, so the fraction of dim=4 cubes that give a
+        // zero XOR sum is lower (~60%) but still clearly above the random
+        // baseline (≈0%).  The threshold of 50% confirms residual structure
+        // while accommodating the improved diffusion; full structure elimination
+        // is verified by the two-round test.
         let mut r = rng();
         let stats = integral::test_cube_sum(1, 4, 30, &mut r);
         assert!(
-            stats.zero_sum_fraction > 0.70,
-            "1-round dim=4: only {:.0}% of cubes gave zero XOR sum; expected > 70%",
+            stats.zero_sum_fraction > 0.50,
+            "1-round dim=4: only {:.0}% of cubes gave zero XOR sum; expected > 50%",
             stats.zero_sum_fraction * 100.0
         );
         assert!(
-            stats.avg_balanced_bits > 6_000.0,
-            "1-round dim=4: avg balanced bits {:.0} < 6000 — expected near-total balance",
+            stats.avg_balanced_bits > 5_000.0,
+            "1-round dim=4: avg balanced bits {:.0} < 5000 — expected near-total balance",
             stats.avg_balanced_bits
         );
     }
