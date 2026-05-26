@@ -1,0 +1,246 @@
+use blake3;
+use crate::round;
+use crate::state::State;
+
+/// Rate in bytes: 5888 bits (25+25+25+17 lanes × 64 bits).
+pub const RATE_BYTES: usize = 736;
+/// Capacity in bytes: 512 bits (s4[17..25]).
+pub const CAPACITY_BYTES: usize = 64;
+/// Default digest length: 512 bits.
+pub const OUTPUT_BYTES: usize = 64;
+
+// ── Permutation ────────────────────────────────────────────────────────────────
+
+/// Apply 6 rounds of the HDH permutation (χ → θ → Φ with round constant).
+pub fn permute(s: State) -> State {
+    (0..6u64).fold(s, |acc, idx| round(acc, idx))
+}
+
+// ── IV ─────────────────────────────────────────────────────────────────────────
+
+fn iv_lane(share: usize, lane: usize) -> u64 {
+    // Domain string unique per (share, lane): breaks all starting symmetry.
+    let tag = format!("HDH-IV-s{share}-l{lane}");
+    let h = blake3::hash(tag.as_bytes());
+    u64::from_le_bytes(h.as_bytes()[0..8].try_into().unwrap())
+}
+
+/// Initialize the state with BLAKE3-derived per-share/per-lane IV constants.
+/// Every cell gets a unique 64-bit seed, playing the role SHA-256's sqrt-of-prime IVs.
+pub fn iv_state() -> State {
+    let s1: [u64; 25] = core::array::from_fn(|i| iv_lane(0, i));
+    let s2: [u64; 25] = core::array::from_fn(|i| iv_lane(1, i));
+    let s3: [u64; 25] = core::array::from_fn(|i| iv_lane(2, i));
+    let s4: [u64; 25] = core::array::from_fn(|i| iv_lane(3, i));
+    let parity: [u64; 25] = core::array::from_fn(|i| s1[i] ^ s2[i] ^ s3[i] ^ s4[i]);
+    State { s1, s2, s3, s4, parity }
+}
+
+// ── Absorption ─────────────────────────────────────────────────────────────────
+
+/// Rate layout (92 rate lanes × 64 bits = 5888 bits):
+///   s1[0..25]  (1600 b) · s2[0..25]  (1600 b) · s3[0..25]  (1600 b) · s4[0..17]  (1088 b)
+/// Capacity (never touched during absorption):
+///   s4[17..25] (512 b)
+fn absorb_block(mut state: State, block: &[u8; RATE_BYTES]) -> State {
+    let mut pos = 0;
+    macro_rules! xor_share {
+        ($share:ident, $range:expr) => {
+            for i in $range {
+                state.$share[i] ^= u64::from_le_bytes(
+                    block[pos..pos + 8].try_into().unwrap(),
+                );
+                pos += 8;
+            }
+        };
+    }
+    xor_share!(s1, 0..25);
+    xor_share!(s2, 0..25);
+    xor_share!(s3, 0..25);
+    xor_share!(s4, 0..17);
+    // Recompute parity for all lanes after rate XOR (multiple shares may have changed per lane).
+    for i in 0..25 {
+        state.parity[i] = state.s1[i] ^ state.s2[i] ^ state.s3[i] ^ state.s4[i];
+    }
+    permute(state)
+}
+
+// ── Padding ────────────────────────────────────────────────────────────────────
+
+/// Apply pad10*1: append 0x01, pad with 0x00 to block boundary, XOR 0x80 into final byte.
+///
+/// Every input produces at least one block. A message that fills a complete block
+/// receives an additional all-pad block to preserve prefix-freeness.
+fn pad_blocks(data: &[u8]) -> Vec<[u8; RATE_BYTES]> {
+    let mut buf: Vec<u8> = data.to_vec();
+    buf.push(0x01);
+    let rem = buf.len() % RATE_BYTES;
+    let extra = if rem == 0 { RATE_BYTES } else { RATE_BYTES - rem };
+    buf.resize(buf.len() + extra, 0x00);
+    *buf.last_mut().unwrap() ^= 0x80;
+    buf.chunks_exact(RATE_BYTES)
+        .map(|c| c.try_into().unwrap())
+        .collect()
+}
+
+// ── Squeeze ────────────────────────────────────────────────────────────────────
+
+/// Extract OUTPUT_BYTES from the first lanes of the rate portion (s1[0..8]).
+fn squeeze_output(state: &State) -> [u8; OUTPUT_BYTES] {
+    let mut out = [0u8; OUTPUT_BYTES];
+    for (i, &lane) in state.s1[..8].iter().enumerate() {
+        out[i * 8..(i + 1) * 8].copy_from_slice(&lane.to_le_bytes());
+    }
+    out
+}
+
+// ── Public API ─────────────────────────────────────────────────────────────────
+
+/// Hash `data` with HDH and return a 64-byte (512-bit) digest.
+pub fn hash(data: &[u8]) -> [u8; OUTPUT_BYTES] {
+    let mut state = iv_state();
+    for block in pad_blocks(data) {
+        state = absorb_block(state, &block);
+    }
+    squeeze_output(&state)
+}
+
+/// Keyed PRF mode.
+///
+/// The 64-byte key is XOR'd into the capacity lanes (s4[17..25]) — the portion
+/// never exposed during squeezing — before absorption begins. The key material
+/// stays hidden throughout the sponge lifetime.
+pub fn prf(key: &[u8; CAPACITY_BYTES], data: &[u8]) -> [u8; OUTPUT_BYTES] {
+    let mut state = iv_state();
+    for (i, chunk) in key.chunks_exact(8).enumerate() {
+        state.s4[17 + i] ^= u64::from_le_bytes(chunk.try_into().unwrap());
+    }
+    // Keep parity consistent for the capacity lanes after key injection.
+    for i in 17..25 {
+        state.parity[i] = state.s1[i] ^ state.s2[i] ^ state.s3[i] ^ state.s4[i];
+    }
+    for block in pad_blocks(data) {
+        state = absorb_block(state, &block);
+    }
+    squeeze_output(&state)
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn hash_is_deterministic() {
+        let data = b"HDH test vector";
+        assert_eq!(hash(data), hash(data));
+    }
+
+    #[test]
+    fn hash_empty_input_does_not_panic() {
+        let out = hash(b"");
+        assert_ne!(out, [0u8; OUTPUT_BYTES], "hash of empty input must not be all-zero");
+    }
+
+    #[test]
+    fn hash_single_bit_flip_changes_output() {
+        let mut data = [0u8; 64];
+        let a = hash(&data);
+        data[0] ^= 1;
+        let b = hash(&data);
+        assert_ne!(a, b, "single-bit flip in input must change the digest");
+        // Expect near-50% bit change (avalanche)
+        let flipped: u32 = a.iter().zip(b.iter()).map(|(x, y)| (x ^ y).count_ones()).sum();
+        assert!(
+            flipped > 100,
+            "avalanche: only {flipped}/512 bits changed — output barely differs after input flip"
+        );
+    }
+
+    #[test]
+    fn hash_known_answer_empty() {
+        let got = hash(b"");
+        assert_eq!(got, HDH_KAT_EMPTY, "hash(empty) KAT mismatch");
+    }
+
+    #[test]
+    fn hash_known_answer_abc() {
+        let got = hash(b"abc");
+        assert_eq!(got, HDH_KAT_ABC, "hash(\"abc\") KAT mismatch");
+    }
+
+    #[test]
+    fn prf_known_answer() {
+        // Non-zero key: single 0x01 byte in first position.
+        let mut key = [0u8; CAPACITY_BYTES];
+        key[0] = 0x01;
+        let got = prf(&key, b"abc");
+        assert_eq!(got, HDH_KAT_PRF_ABC, "prf KAT mismatch");
+    }
+
+    #[test]
+    fn prf_differs_from_hash_with_nonzero_key() {
+        // A non-zero key XORs into the BLAKE3-seeded capacity lanes, producing
+        // a different starting point than the unkeyed hash.
+        let mut key = [0u8; CAPACITY_BYTES];
+        key[0] = 0x01;
+        assert_ne!(
+            hash(b"abc"),
+            prf(&key, b"abc"),
+            "PRF with non-zero key must differ from unkeyed hash"
+        );
+    }
+
+    #[test]
+    fn prf_different_keys_produce_different_output() {
+        let data = b"message";
+        let mut key_a = [0u8; CAPACITY_BYTES];
+        let mut key_b = [0u8; CAPACITY_BYTES];
+        key_a[0] = 0x01;
+        key_b[0] = 0x02;
+        assert_ne!(prf(&key_a, data), prf(&key_b, data));
+    }
+
+    #[test]
+    fn prf_is_deterministic() {
+        let data = b"message";
+        let key = [42u8; CAPACITY_BYTES];
+        assert_eq!(prf(&key, data), prf(&key, data));
+    }
+
+    // KAT values — generated by `cargo run --bin gen_hash_kat`.
+    static HDH_KAT_EMPTY: [u8; OUTPUT_BYTES] = [
+        0x1a, 0x73, 0x5c, 0xdc, 0xb7, 0xd2, 0xa6, 0x35,
+        0x79, 0x01, 0x0e, 0x35, 0xf7, 0x1d, 0x5d, 0x06,
+        0x61, 0x51, 0x55, 0xe0, 0x4e, 0x7b, 0xe7, 0x35,
+        0xca, 0x39, 0xd9, 0xb4, 0x5e, 0x89, 0xb4, 0x67,
+        0x32, 0xbd, 0x6c, 0x9e, 0x77, 0xf3, 0xca, 0xe5,
+        0x18, 0xa6, 0x99, 0xc3, 0x6f, 0x3a, 0x06, 0xf7,
+        0x51, 0x93, 0x51, 0xff, 0x25, 0x62, 0xaa, 0xc0,
+        0x81, 0x69, 0x06, 0x87, 0x14, 0x06, 0x38, 0xdb,
+    ];
+
+    static HDH_KAT_ABC: [u8; OUTPUT_BYTES] = [
+        0xeb, 0xdc, 0x8b, 0x7a, 0x77, 0x31, 0x52, 0xef,
+        0x8a, 0x60, 0x30, 0x9f, 0xd8, 0x2e, 0x8f, 0xf5,
+        0x1f, 0x98, 0x1a, 0xa5, 0x69, 0xe3, 0x27, 0xa5,
+        0xdc, 0x33, 0x46, 0x3f, 0x76, 0xc4, 0x1d, 0x48,
+        0xc6, 0x22, 0xe7, 0xce, 0x5d, 0x4f, 0x04, 0xb6,
+        0x56, 0x1a, 0x8f, 0x50, 0x2d, 0x33, 0x73, 0x44,
+        0x10, 0xa6, 0x79, 0x37, 0xb3, 0xdd, 0x82, 0x9d,
+        0x15, 0xd0, 0x7c, 0xa0, 0x5a, 0x90, 0x40, 0xd6,
+    ];
+
+    // PRF with key = [0x01, 0x00, 0x00, ..., 0x00].
+    static HDH_KAT_PRF_ABC: [u8; OUTPUT_BYTES] = [
+        0x96, 0xb2, 0x90, 0xf1, 0x6e, 0xd5, 0x3a, 0xb9,
+        0xd7, 0xa3, 0x8c, 0xcb, 0x5c, 0xb7, 0xea, 0xb9,
+        0x1c, 0xde, 0x85, 0xe3, 0x0a, 0x03, 0x3a, 0x33,
+        0x5f, 0x8b, 0x05, 0xaf, 0x0c, 0xa9, 0xce, 0xc2,
+        0xab, 0x82, 0xce, 0xad, 0x39, 0x71, 0x05, 0x8a,
+        0x82, 0xa2, 0x68, 0x0b, 0x26, 0x09, 0xaa, 0xe1,
+        0x67, 0x18, 0x1c, 0x2b, 0xba, 0xff, 0x17, 0x15,
+        0xb3, 0x90, 0xf8, 0x38, 0x95, 0x58, 0xdc, 0x6d,
+    ];
+}

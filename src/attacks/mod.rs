@@ -8,8 +8,10 @@ pub mod integral;
 pub mod jacobian;
 pub mod linear;
 pub mod mitm;
+pub mod multi_user_sponge;
 pub mod phi_symmetry;
 pub mod preimage;
+pub mod quantum_security;
 pub mod sat;
 pub mod sponge;
 pub mod sponge_indiff;
@@ -1045,5 +1047,119 @@ mod tests {
             "3-round uniformity {:.2} significantly worse than 2-round {:.2} — adding a round degraded uniformity",
             s3.uniformity_ratio, s2.uniformity_ratio
         );
+    }
+
+    // ── Quantum security ────────────────────────────────────────────────────────
+
+    #[test]
+    fn quantum_hdh_meets_nist_level5() {
+        // At c=512: BHT collision ≈ 170.7 bits ≥ 128, Grover preimage = 256 bits.
+        // Combined → NIST PQC Level 5 (highest tier).
+        let bounds = quantum_security::compute_quantum_bounds(512);
+        assert!(
+            bounds.quantum_collision_bits >= 128.0,
+            "BHT collision security {:.1} bits < 128 — NIST Level 1 threshold not met",
+            bounds.quantum_collision_bits
+        );
+        assert!(
+            bounds.quantum_preimage_bits >= 256.0,
+            "Grover preimage security {:.1} bits < 256 — Level 5 preimage bar not met",
+            bounds.quantum_preimage_bits
+        );
+        assert!(bounds.meets_level5, "HDH at c=512 must meet NIST PQC Level 5");
+        assert_eq!(bounds.nist_level, 5, "NIST level must be 5 at c=512");
+    }
+
+    #[test]
+    fn quantum_simons_not_applicable() {
+        // Φ destroys all XOR-period structure (measured equivariance = 0.0).
+        // Simon's algorithm requires a hidden XOR period — inapplicable here.
+        let bounds = quantum_security::compute_quantum_bounds(512);
+        assert!(
+            !bounds.simons_applicable,
+            "Simon's algorithm marked applicable — Φ should destroy all XOR-period structure"
+        );
+    }
+
+    #[test]
+    fn quantum_bht_collision_not_near_term_feasible() {
+        // 2^{512/3} ≈ 2^{170.7} quantum evaluations — far beyond near-term quantum hardware.
+        let bht = quantum_security::model_bht(512);
+        assert!(
+            !bht.near_term_feasible,
+            "BHT at c=512 marked near-term feasible — expected work 2^{:.1} to be infeasible",
+            bht.work_log2
+        );
+        assert!(bht.security_bits >= 128.0, "BHT security {:.1} < 128 bits", bht.security_bits);
+    }
+
+    #[test]
+    fn quantum_grover_preimage_not_near_term_feasible() {
+        // 2^{512/2} = 2^{256} — far beyond near-term quantum hardware.
+        let grover = quantum_security::model_grover(512);
+        assert!(
+            !grover.near_term_feasible,
+            "Grover at 512-bit output marked near-term feasible — expected 2^{:.1} infeasible",
+            grover.work_log2
+        );
+        assert_eq!(grover.work_log2, 256.0);
+    }
+
+    // ── Multi-user sponge security ──────────────────────────────────────────────
+
+    #[test]
+    fn multi_user_collision_safe_at_2pow32_users() {
+        // U=2^32 users, q=2^32 queries each: Adv ≤ 2^{32+64−512} = 2^{−416} ≪ 2^{−128}.
+        let bound = multi_user_sponge::multi_user_collision_bound(512, 32, 32);
+        assert!(
+            bound.meets_128bit,
+            "multi-user collision advantage 2^{:.1} ≥ 2^{{-128}} at U=2^32, q=2^32",
+            bound.advantage_log2
+        );
+        assert!(
+            bound.security_bits >= 128.0,
+            "multi-user collision security {:.1} bits < 128",
+            bound.security_bits
+        );
+    }
+
+    #[test]
+    fn multi_user_collision_safe_at_2pow64_users() {
+        // U=2^64 users, q=2^32 queries each: Adv ≤ 2^{64+64−512} = 2^{−384} ≪ 2^{−128}.
+        let bound = multi_user_sponge::multi_user_collision_bound(512, 64, 32);
+        assert!(
+            bound.meets_128bit,
+            "multi-user collision advantage 2^{:.1} ≥ 2^{{-128}} at U=2^64, q=2^32",
+            bound.advantage_log2
+        );
+    }
+
+    #[test]
+    fn multi_user_prf_safe_at_2pow32_users() {
+        // U=2^32 users, k=512-bit key, q=2^32 queries: Adv ≤ 2^{32+32−256} = 2^{−192}.
+        let bound = multi_user_sponge::multi_user_prf_bound(512, 512, 32, 32);
+        assert!(
+            bound.meets_128bit,
+            "multi-user PRF advantage 2^{:.1} ≥ 2^{{-128}} at U=2^32, q=2^32",
+            bound.advantage_log2
+        );
+    }
+
+    #[test]
+    fn multi_user_sweep_all_standard_configs_safe() {
+        // Every (U, q) configuration in the standard sweep must stay below 2^{-128}.
+        let sweep = multi_user_sponge::multi_user_sweep(512, 512);
+        for e in &sweep.entries {
+            assert!(
+                e.meets_128bit_collision,
+                "multi-user collision unsafe at U=2^{}, q=2^{}: Adv=2^{:.1}",
+                e.num_users_log2, e.queries_per_user_log2, e.collision_advantage_log2
+            );
+            assert!(
+                e.meets_128bit_prf,
+                "multi-user PRF unsafe at U=2^{}, q=2^{}: Adv=2^{:.1}",
+                e.num_users_log2, e.queries_per_user_log2, e.prf_advantage_log2
+            );
+        }
     }
 }
