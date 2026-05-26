@@ -1,10 +1,13 @@
+pub mod adversarial_summary;
 pub mod annihilator;
 pub mod boomerang;
 pub mod branch_number;
+pub mod closure_theorem;
 pub mod invariant_search;
 pub mod linear_hull;
 pub mod milp_trail;
 pub mod orbit_scaling;
+pub mod security_margin;
 pub mod diff_bounds;
 pub mod differential;
 pub mod distinguisher;
@@ -1378,5 +1381,84 @@ mod tests {
                 e.num_users_log2, e.queries_per_user_log2, e.prf_advantage_log2
             );
         }
+    }
+
+    // ── Security margin calculator ────────────────────────────────────────────
+
+    #[test]
+    fn security_margin_r4_recommended_is_infeasible() {
+        let mut r = rng();
+        let table = security_margin::compute_security_margin(&mut r);
+        let r4 = table.rows.iter().find(|row| row.rounds == 4)
+            .expect("r=4 row must be present");
+        assert!(r4.differential_bound_log2 < -128.0,
+            "r=4 differential bound {} should be < -128", r4.differential_bound_log2);
+        // Linear hull bound gives data complexity 2^{-2 × bias_log2}; security requires
+        // bias_log2 < -64 (i.e., data complexity > 2^128).
+        assert!(r4.linear_bound_log2 < -64.0,
+            "r=4 linear bound {} should be < -64 (data complexity > 2^128)", r4.linear_bound_log2);
+        assert!(r4.degree_lower_bound >= 81,
+            "r=4 degree lower bound {} should be ≥ 81 (3^4)", r4.degree_lower_bound);
+    }
+
+    #[test]
+    fn security_margin_has_correct_row_count() {
+        let mut r = rng();
+        let table = security_margin::compute_security_margin(&mut r);
+        // Rows for r = 1, 2, 3, 4, 6, 8
+        assert_eq!(table.rows.len(), 6, "expected 6 rows (r=1,2,3,4,6,8)");
+        assert_eq!(table.branch_number, 6, "branch number must be 6");
+        assert_eq!(table.capacity_bits, 512, "capacity must be 512 bits");
+    }
+
+    // ── Closure theorem ───────────────────────────────────────────────────────
+
+    #[test]
+    fn closure_theorem_all_conditions_met() {
+        let mut r = rng();
+        let theorem = closure_theorem::build_closure_theorem(&mut r);
+        assert!(theorem.theorem_holds,
+            "closure theorem must hold at r=2; failed conditions: {:?}",
+            theorem.conditions.iter()
+                .filter(|c| !c.met)
+                .map(|c| c.name)
+                .collect::<Vec<_>>());
+        assert_eq!(theorem.closure_round, 2);
+        assert!(theorem.security_bound_log2 > 90.0,
+            "security bound log2 = {} should exceed 90", theorem.security_bound_log2);
+    }
+
+    #[test]
+    fn closure_theorem_security_bound_matches_trail() {
+        // The security bound = B(θ) × |log₂ p_max_chi| = 6 × 15.6 = 93.6
+        let mut r = rng();
+        let theorem = closure_theorem::build_closure_theorem(&mut r);
+        let expected = 6.0 * 15.6;
+        assert!((theorem.security_bound_log2 - expected).abs() < 1.0,
+            "security bound {} deviates from expected {}", theorem.security_bound_log2, expected);
+    }
+
+    // ── Adversarial summary ───────────────────────────────────────────────────
+
+    #[test]
+    fn adversarial_summary_all_attacks_infeasible() {
+        let mut r = rng();
+        let summary = adversarial_summary::build_adversarial_summary(&mut r);
+        for entry in &summary.entries {
+            assert!(!entry.feasible,
+                "attack '{}' marked feasible (log2 = {:.1}) — security failure",
+                entry.attack, entry.best_complexity_log2);
+        }
+    }
+
+    #[test]
+    fn adversarial_summary_has_ten_entries() {
+        let mut r = rng();
+        let summary = adversarial_summary::build_adversarial_summary(&mut r);
+        assert_eq!(summary.entries.len(), 10, "expected 10 attack entries");
+        assert!(summary.classical_collision_bits >= 256.0,
+            "classical collision security should be ≥256 bits");
+        assert!(summary.quantum_collision_bits >= 128.0,
+            "quantum collision security should be ≥128 bits");
     }
 }
