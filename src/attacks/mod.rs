@@ -927,4 +927,123 @@ mod tests {
             "2-round HDH algebraic attack is marked GPU-feasible on exascale — unexpected"
         );
     }
+
+    // ── Structured boomerang (bench section 26, not previously in cargo test) ──
+    //
+    // At 1 round, χ's lane-local design means a single-bit α difference touches
+    // fewer lanes than a fully random α, producing a smaller D²F Hamming weight.
+    // This hw_reduction (random_α HW − single_bit_α HW) must be positive at 1
+    // round and decrease at 2 rounds as cross-lane mixing destroys the advantage.
+
+    #[test]
+    fn boomerang_structured_single_bit_shows_hw_reduction_at_one_round() {
+        let mut r = rng();
+        let s1 = boomerang::test_structured_boomerang(1, 200, &mut r);
+        let s2 = boomerang::test_structured_boomerang(2, 200, &mut r);
+        assert!(
+            s1.hw_reduction > 0.0,
+            "1-round hw_reduction={:.1} ≤ 0 — single-bit α should produce smaller boomerang sums",
+            s1.hw_reduction
+        );
+        assert!(
+            s2.hw_reduction < s1.hw_reduction,
+            "2-round hw_reduction={:.1} ≥ 1-round {:.1} — cross-lane mixing did not reduce the advantage",
+            s2.hw_reduction, s1.hw_reduction
+        );
+    }
+
+    // ── Large-cube integral dim=8 (bench section 18, not previously in cargo test) ──
+    //
+    // dim=4 cubes (16 evaluations) already confirm the 1→2 round degree transition.
+    // dim=8 cubes (256 evaluations) probe a wider subspace: 1-round should still
+    // show zero-sum structure (degree ≤ 3 < 8), while 2-round must eliminate it.
+
+    #[test]
+    fn integral_large_cube_dim8_round_transition() {
+        let mut r = rng();
+        let s1 = integral::test_cube_sum(1, 8, 10, &mut r);
+        let s2 = integral::test_cube_sum(2, 8, 10, &mut r);
+        assert!(
+            s1.zero_sum_fraction > 0.0,
+            "1-round dim=8: zero-sum fraction is 0 — integral structure not detectable at dim=8"
+        );
+        assert_eq!(
+            s2.zero_sum_fraction, 0.0,
+            "2-round dim=8: {:.0}% of dim-8 cubes gave zero XOR sum — integral survives to 2 rounds",
+            s2.zero_sum_fraction * 100.0
+        );
+    }
+
+    // ── Sponge state partition (bench section 30, not previously in cargo test) ──
+    //
+    // For a 6400-bit state targeting 256-bit collision security, the minimum
+    // capacity is 512 bits, leaving 5888 bits of rate — over 92% throughput.
+
+    #[test]
+    fn sponge_state_partition_recommended_capacity_and_throughput() {
+        let part = sponge::analyze_state_partition(6400);
+        assert_eq!(
+            part.recommended_capacity, 512,
+            "recommended capacity {} ≠ 512 for 256-bit security",
+            part.recommended_capacity
+        );
+        assert_eq!(
+            part.recommended_rate, 5888,
+            "recommended rate {} ≠ 5888 (= 6400 − 512)",
+            part.recommended_rate
+        );
+        assert!(
+            part.recommended_throughput > 0.90,
+            "recommended throughput {:.3} < 0.90 — rate/state ratio unexpectedly low",
+            part.recommended_throughput
+        );
+    }
+
+    // ── Padding domain separation (bench section 35, not previously in cargo test) ──
+    //
+    // pad10*1 is prefix-free by construction: every padded encoding ends with a
+    // 0x80 byte that cannot appear inside an unpadded message at the same position.
+    // Rate-separation ensures different rate values produce non-overlapping message
+    // spaces, preventing cross-rate collisions.
+
+    #[test]
+    fn sponge_indiff_padding_is_prefix_free_and_domain_separated() {
+        let pad = sponge_indiff::analyze_padding(5888);
+        assert!(
+            pad.is_prefix_free,
+            "pad10*1 at r=5888 is not prefix-free — message domain not separated"
+        );
+        assert!(
+            pad.is_rate_separated,
+            "padding does not domain-separate different rate values"
+        );
+        assert_eq!(
+            pad.min_padding_overhead_bytes, 2,
+            "padding overhead {} bytes ≠ 2 — pad10*1 requires exactly one 0x01 and one 0x80 byte",
+            pad.min_padding_overhead_bytes
+        );
+    }
+
+    // ── 3-round MITM entropy (bench section 23 includes 3 rounds; test suite stopped at 2) ──
+    //
+    // If 2-round output is already near-uniform, 3-round must be at least as
+    // uniform (uniformity_ratio no worse).  This confirms security does not
+    // regress when adding extra rounds.
+
+    #[test]
+    fn mitm_cat5_three_round_entropy_no_worse_than_two() {
+        let mut r = rng();
+        let s2 = mitm::measure_entropy_collapse(2, 3_000, 10, &mut r);
+        let s3 = mitm::measure_entropy_collapse(3, 3_000, 10, &mut r);
+        assert!(
+            s3.uniformity_ratio <= 10.0,
+            "3-round uniformity ratio {:.2} > 10 — output distribution severely non-uniform",
+            s3.uniformity_ratio
+        );
+        assert!(
+            s3.uniformity_ratio <= s2.uniformity_ratio * 1.5,
+            "3-round uniformity {:.2} significantly worse than 2-round {:.2} — adding a round degraded uniformity",
+            s3.uniformity_ratio, s2.uniformity_ratio
+        );
+    }
 }
