@@ -48,13 +48,16 @@ mod tests {
     #[test]
     fn theta_parity_invariant() {
         // θ is linear and per-share; parity must satisfy
-        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next].
+        // parity_out[i] = parity[i] ^ parity[prev] ^ parity[next] ^ parity[far_a] ^ parity[far_b].
         let s = chi::chi(&fixed_state(31415));
         let out = theta::theta(&s);
         for i in 0..25 {
-            let prev = (i + 24) % 25;
-            let next = (i + 1) % 25;
-            let expected = s.parity[prev] ^ s.parity[i] ^ s.parity[next];
+            let prev  = (i + 24) % 25;
+            let next  = (i + 1)  % 25;
+            let far_a = (i + 7)  % 25;
+            let far_b = (i + 18) % 25;
+            let expected = s.parity[i] ^ s.parity[prev] ^ s.parity[next]
+                         ^ s.parity[far_a] ^ s.parity[far_b];
             assert_eq!(out.parity[i], expected, "theta parity mismatch at lane {i}");
             // also verify parity matches actual share XOR
             let actual = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
@@ -64,16 +67,17 @@ mod tests {
 
     #[test]
     fn theta_cross_lane_diffusion() {
-        // a single-lane perturbation must reach its two neighbours after θ
+        // A single-lane perturbation must reach its four neighbours after θ.
+        // With ±1 and ±7 strides, a flip at lane 12 affects lanes {5, 11, 12, 13, 19}.
         let s = fixed_state(271828);
         let mut perturbed = s.clone();
         perturbed.s1[12] ^= 1;
         let a = theta::theta(&s);
         let b = theta::theta(&perturbed);
-        // lanes 11, 12, 13 must differ; all others must be identical
+        let affected = [5usize, 11, 12, 13, 19];
         for i in 0..25 {
             let changed = (a.s1[i] ^ b.s1[i]) != 0;
-            if i == 11 || i == 12 || i == 13 {
+            if affected.contains(&i) {
                 assert!(changed, "theta failed to propagate to lane {i}");
             } else {
                 assert!(!changed, "theta unexpectedly changed lane {i}");
@@ -181,5 +185,81 @@ mod tests {
         // output should not be identical to input across all shares
         let identical = (0..25).all(|i| out.s1[i] == s.s1[i] && out.s2[i] == s.s2[i]);
         assert!(!identical, "round produced no change");
+    }
+
+    // ── Known Answer Tests ──────────────────────────────────────────────────────
+    //
+    // Fixed input → exact expected output. Any change to a rotation constant,
+    // round constant derivation, or lane ordering will break these immediately,
+    // unlike statistical tests which only check aggregate distributions.
+    //
+    // Values computed from fixed_state(0x0123456789abcdef) via gen_kat.
+
+    #[test]
+    fn chi_known_answer() {
+        let s = fixed_state(0x0123456789abcdef);
+        let out = chi::chi(&s);
+        assert_eq!(out.s1[0],     0xafac5c8c8eff0c8c, "chi s1[0] mismatch");
+        assert_eq!(out.s2[0],     0xcac68eb543f99550, "chi s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x6902af9049b860ad, "chi s3[0] mismatch");
+        assert_eq!(out.s4[0],     0x02bb7b48a924d40c, "chi s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x0ed306e12d9a2d7d, "chi parity[0] mismatch");
+        assert_eq!(out.s1[12],    0xe5c5d1b277bb1438, "chi s1[12] mismatch");
+        assert_eq!(out.s2[24],    0x435bb73d238da941, "chi s2[24] mismatch");
+    }
+
+    #[test]
+    fn round_known_answer_r0() {
+        let s = fixed_state(0x0123456789abcdef);
+        let out = round(s, 0);
+        assert_eq!(out.s1[0],     0x21947a2c1f9d155c, "round0 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x9c2c3541ccfb7050, "round0 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x8aca6966136c5cfc, "round0 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0xfc14f40c486a0b9d, "round0 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0xeeb84187a556b8e5, "round0 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x78836d24a6d6d1a8, "round0 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0x63dbc49328e0aa1d, "round0 s2[24] mismatch");
+    }
+
+    #[test]
+    fn round_known_answer_r1() {
+        let s = fixed_state(0x0123456789abcdef);
+        let out = round(s, 1);
+        assert_eq!(out.s1[0],     0xe95fa5e9c7822fc1, "round1 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x24da2c571e47f510, "round1 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x2a154fd6fefcf8fc, "round1 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0xcf4f0422b956d79e, "round1 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x94ef889f34b549d4, "round1 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x4d2d214b268eef12, "round1 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0xe0c1cb82d72b11fe, "round1 s2[24] mismatch");
+    }
+
+    #[test]
+    fn four_round_chain_known_answer() {
+        let s = fixed_state(0x0123456789abcdef);
+        let mut out = s;
+        for i in 0..4 {
+            out = round(out, i);
+        }
+        assert_eq!(out.s1[0],     0x8311c0e4b3a0d63d, "4-round s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x46bee540073cda87, "4-round s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x982520b022b2e77c, "4-round s3[0] mismatch");
+        assert_eq!(out.s4[0],     0x6824912d82939b4c, "4-round s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x4a650be7ac73967e, "4-round parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x4cedbd1b38f381dd, "4-round s1[12] mismatch");
+        assert_eq!(out.s2[24],    0xba16dba67bc05ea2, "4-round s2[24] mismatch");
+    }
+
+    #[test]
+    fn round_idx_produces_distinct_outputs() {
+        // Different round indices derive different round constants via BLAKE3,
+        // so the same input state must produce distinct outputs for each index.
+        let s = fixed_state(0x0123456789abcdef);
+        let r0 = round(s.clone(), 0);
+        let r1 = round(s.clone(), 1);
+        let r2 = round(s.clone(), 2);
+        assert_ne!(r0.s1[0], r1.s1[0], "round 0 and 1 produced identical s1[0]");
+        assert_ne!(r1.s1[0], r2.s1[0], "round 1 and 2 produced identical s1[0]");
+        assert_ne!(r0.s1[0], r2.s1[0], "round 0 and 2 produced identical s1[0]");
     }
 }

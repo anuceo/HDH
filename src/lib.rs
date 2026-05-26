@@ -2,6 +2,7 @@ pub mod attacks;
 pub mod chi;
 pub mod dfa;
 pub mod entropy;
+pub mod hash;
 pub mod mask;
 pub mod phi;
 pub mod state;

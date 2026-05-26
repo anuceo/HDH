@@ -18,3 +18,8 @@ bench = false
 name = "attack_bench"
 path = "benches/attack_bench.rs"
 bench = false
+
+[[bin]]
+name = "gen_kat"
+path = "src/bin/gen_kat.rs"
+bench = false
