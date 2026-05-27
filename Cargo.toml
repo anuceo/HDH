@@ -23,3 +23,8 @@ bench = false
 name = "gen_kat"
 path = "src/bin/gen_kat.rs"
 bench = false
+
+[[bin]]
+name = "hdh_key"
+path = "src/bin/hdh_key.rs"
+bench = false
