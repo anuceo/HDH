@@ -491,12 +491,12 @@ fn main() {
             if e.meets_128bit { "yes" } else { "no" },
             if e.meets_256bit { "yes" } else { "no" });
     }
-    println!("  Max rate for 128-bit security: {} bits  (c ≥ 256)", sweep.min_rate_for_128bit);
-    println!("  Max rate for 256-bit security: {} bits  (c ≥ 512)", sweep.min_rate_for_256bit);
+    println!("  Max rate for 128-bit security: {} bits  (c ≥ 256)", sweep.max_rate_for_128bit);
+    println!("  Max rate for 256-bit security: {} bits  (c ≥ 512)", sweep.max_rate_for_256bit);
     println!("  RESULT: 6400-bit state comfortably supports 256-bit security at r={}  \
               (throughput {:.2})",
-        sweep.min_rate_for_256bit,
-        sweep.min_rate_for_256bit as f64 / 6400.0);
+        sweep.max_rate_for_256bit,
+        sweep.max_rate_for_256bit as f64 / 6400.0);
 
     // ── 29. Sponge round security map ─────────────────────────────────────────
     section(29, total, "Sponge Round Security Map  (empirical attack results by round)");

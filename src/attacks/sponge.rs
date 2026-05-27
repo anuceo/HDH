@@ -72,14 +72,14 @@ pub struct SecuritySweepEntry {
 pub struct SecuritySweep {
     pub entries: Vec<SecuritySweepEntry>,
     /// Maximum rate r such that c/2 >= 128 (i.e., c >= 256 → r <= b - 256).
-    pub min_rate_for_128bit: usize,
+    pub max_rate_for_128bit: usize,
     /// Maximum rate r such that c/2 >= 256 (i.e., c >= 512 → r <= b - 512).
-    pub min_rate_for_256bit: usize,
+    pub max_rate_for_256bit: usize,
     pub state_bits: usize,
 }
 
 /// Candidate rate values to sweep.
-const SWEEP_RATES: &[usize] = &[64, 128, 256, 512, 1024, 2048, 3200, 4096, 5120, 6144];
+const SWEEP_RATES: &[usize] = &[64, 128, 256, 512, 1024, 2048, 3200, 4096, 5120, 5888, 6144];
 
 pub fn sweep_security_tradeoffs(state_bits: usize) -> SecuritySweep {
     let mut entries = Vec::with_capacity(SWEEP_RATES.len());
@@ -115,8 +115,8 @@ pub fn sweep_security_tradeoffs(state_bits: usize) -> SecuritySweep {
 
     SecuritySweep {
         entries,
-        min_rate_for_128bit: max_rate_128,
-        min_rate_for_256bit: max_rate_256,
+        max_rate_for_128bit: max_rate_128,
+        max_rate_for_256bit: max_rate_256,
         state_bits,
     }
 }

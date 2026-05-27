@@ -241,7 +241,7 @@ pub fn analyze_padding(rate_bits: usize) -> PaddingDomainSeparation {
         empty_message_padded: padded,
         // A message fills the first block when its byte length = rate_bytes - 2
         // (need at least 2 bytes for the 0x01 and 0x80 markers in the last block).
-        second_block_threshold_bits: (rate_bytes - 2) * 8,
+        second_block_threshold_bits: (rate_bytes - 1) * 8,
         is_prefix_free: true,   // provable for pad10*1 by the argument above
         is_rate_separated: true,
         min_padding_overhead_bytes: 2,

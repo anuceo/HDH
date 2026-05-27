@@ -93,7 +93,7 @@ pub fn theta_branch_by_weight() -> Vec<(usize, usize, usize)> {
         }
     }
 
-    (1..=13)
+    (1..=25)
         .filter(|&w| min_out[w] != usize::MAX)
         .map(|w| (w, min_out[w], min_sum[w]))
         .collect()

@@ -47,83 +47,11 @@ pub struct OrbitStats {
 /// Analyze the complete orbit/cycle structure of chi4 over all 65536 states.
 pub fn analyze_chi4_orbits() -> OrbitStats {
     const N: usize = 65536;
-    // Color: 0 = unvisited, u32::MAX = in-progress, else = cycle_id + 1
-    let mut color = vec![0u32; N];
-    // path_pos[x] = position of x in the current DFS path (valid only when color[x] == u32::MAX)
-    let mut path_pos = vec![0usize; N];
-
-    // Per-cycle length tracking: cycle_id -> length
-    let mut cycle_lengths: Vec<usize> = Vec::new();
-    // For each state, which cycle does it belong to?
-    let mut state_cycle: Vec<u32> = vec![u32::MAX; N];
-
-    let mut next_cycle_id: u32 = 0;
-
-    for start in 0..N {
-        if color[start] != 0 {
-            continue;
-        }
-
-        let mut path: Vec<usize> = Vec::new();
-        let mut x = start;
-
-        loop {
-            if color[x] != 0 && color[x] != u32::MAX {
-                // Hit an already-processed node; mark all path nodes with its cycle_id
-                let cid = color[x] - 1; // convert to 0-indexed cycle id
-                for &v in &path {
-                    color[v] = cid + 1;
-                    state_cycle[v] = cid;
-                }
-                break;
-            }
-
-            if color[x] == u32::MAX {
-                // Cycle detected: x is in the current path at path_pos[x]
-                let cycle_start_pos = path_pos[x];
-                let cycle_len = path.len() - cycle_start_pos;
-
-                // Register this new cycle
-                let cid = next_cycle_id;
-                next_cycle_id += 1;
-                cycle_lengths.push(cycle_len);
-
-                // Mark cycle nodes
-                for &v in &path[cycle_start_pos..] {
-                    color[v] = cid + 1;
-                    state_cycle[v] = cid;
-                }
-                // Mark tail nodes (rho-tail before the cycle): assign them the same cycle id
-                // (they lead into the cycle but aren't part of it; we still need to mark them)
-                for &v in &path[..cycle_start_pos] {
-                    color[v] = cid + 1;
-                    state_cycle[v] = cid;
-                }
-                break;
-            }
-
-            // x is unvisited; add to path
-            color[x] = u32::MAX;
-            path_pos[x] = path.len();
-            path.push(x);
-            x = chi4(x as u16) as usize;
-        }
-    }
-
-    // Now compute statistics from cycle_lengths
-    // Note: cycle_lengths contains one entry per cycle with the cycle length.
-    // States in a rho-tail (not directly on a cycle) were assigned to the nearest cycle.
-    // For cycle statistics, we only care about actual cycle membership.
-    // Let's recompute properly: for each state, follow path until we hit a colored node,
-    // then determine if state is ON the cycle or in the tail.
-    //
-    // Actually, the simpler approach: rebuild cycle data from scratch by following
-    // each state and tracking true cycle membership.
-
-    // Re-do with proper cycle tracking
     let mut visited = vec![false; N];
     let mut on_cycle = vec![false; N];
     let mut actual_cycle_lengths: Vec<usize> = Vec::new();
+    // Allocated once and reset between iterations to avoid O(N²) heap traffic.
+    let mut seen_pos: Vec<i64> = vec![-1i64; N];
 
     for start in 0..N {
         if visited[start] {
@@ -132,7 +60,6 @@ pub fn analyze_chi4_orbits() -> OrbitStats {
 
         // Follow the functional graph from start
         let mut path: Vec<usize> = Vec::new();
-        let mut seen_pos: Vec<i64> = vec![-1i64; N]; // -1 = not in path
         let mut x = start;
 
         loop {

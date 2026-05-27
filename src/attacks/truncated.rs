@@ -118,7 +118,7 @@ pub fn analyze_truncated_differentials() -> TruncatedDiffStats {
         };
 
         // Iterate over inputs (first n_inputs, uniformly spaced if capped)
-        let input_step = if n_inputs < 65536 { 65536 / n_inputs } else { 1 };
+        let input_step = if n_inputs < 65536 { (65536 + n_inputs - 1) / n_inputs } else { 1 };
         for xi in (0usize..65536).step_by(input_step) {
             let x = xi as u16;
             // Iterate over all Δ with the given activity pattern.

@@ -162,7 +162,7 @@ pub fn build_adversarial_summary(rng: &mut impl Rng) -> AdversarialSummary {
         complexity_display: fmt_log2(hyb.total_log2),
         bound_type: "model",
         feasible: hyb.total_log2 < 64.0,
-        note: "Fix k={} vars by brute force + Gröbner on reduced system; optimal k chosen",
+        note: "Fix k vars by brute force + Gröbner on reduced system; optimal k chosen",
     });
 
     // ── 9. Quantum Collision (BHT) ────────────────────────────────────────────

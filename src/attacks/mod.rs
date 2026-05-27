@@ -760,11 +760,11 @@ mod tests {
     #[test]
     fn sponge_128bit_security_achievable() {
         // The 6400-bit state allows c >= 256 (so collision security >= 128 bits)
-        // with strictly positive rate.  min_rate_for_128bit is the *maximum* r
+        // with strictly positive rate.  max_rate_for_128bit is the *maximum* r
         // such that c/2 >= 128, so it must be > 0.
         let sweep = sponge::sweep_security_tradeoffs(6400);
         assert!(
-            sweep.min_rate_for_128bit > 0,
+            sweep.max_rate_for_128bit > 0,
             "no rate value achieves 128-bit collision security — state too small?"
         );
     }
@@ -796,16 +796,16 @@ mod tests {
     #[test]
     fn sponge_256bit_security_achievable() {
         // 6400-bit state can provide 256-bit collision security with ample rate.
-        // min_rate_for_256bit must be > 0 and above a reasonable threshold (1024).
+        // max_rate_for_256bit must be > 0 and above a reasonable threshold (1024).
         let sweep = sponge::sweep_security_tradeoffs(6400);
         assert!(
-            sweep.min_rate_for_256bit > 0,
+            sweep.max_rate_for_256bit > 0,
             "no rate achieves 256-bit collision security"
         );
         assert!(
-            sweep.min_rate_for_256bit >= 1024,
+            sweep.max_rate_for_256bit >= 1024,
             "max throughput-compatible rate for 256-bit security is only {} bits — unexpectedly low",
-            sweep.min_rate_for_256bit
+            sweep.max_rate_for_256bit
         );
     }
 
