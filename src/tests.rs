@@ -212,26 +212,26 @@ mod tests {
     fn round_known_answer_r0() {
         let s = fixed_state(0x0123456789abcdef);
         let out = round(s, 0);
-        assert_eq!(out.s1[0],     0x21947a2c1f9d155c, "round0 s1[0] mismatch");
-        assert_eq!(out.s2[0],     0x9c2c3541ccfb7050, "round0 s2[0] mismatch");
-        assert_eq!(out.s3[0],     0x8aca6966136c5cfc, "round0 s3[0] mismatch");
-        assert_eq!(out.s4[0],     0xfc14f40c486a0b9d, "round0 s4[0] mismatch");
-        assert_eq!(out.parity[0], 0xeeb84187a556b8e5, "round0 parity[0] mismatch");
-        assert_eq!(out.s1[12],    0x78836d24a6d6d1a8, "round0 s1[12] mismatch");
-        assert_eq!(out.s2[24],    0x63dbc49328e0aa1d, "round0 s2[24] mismatch");
+        assert_eq!(out.s1[0],     0x91f8b2a736efd4d9, "round0 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x3d74c791e4ec5b17, "round0 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0x5017fd4c3cae5587, "round0 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0x5ac31715800fad02, "round0 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0xa6589f6f6ea2774b, "round0 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0xc561adbde8f0279e, "round0 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0x4c51a6a405dd926a, "round0 s2[24] mismatch");
     }
 
     #[test]
     fn round_known_answer_r1() {
         let s = fixed_state(0x0123456789abcdef);
         let out = round(s, 1);
-        assert_eq!(out.s1[0],     0xe95fa5e9c7822fc1, "round1 s1[0] mismatch");
-        assert_eq!(out.s2[0],     0x24da2c571e47f510, "round1 s2[0] mismatch");
-        assert_eq!(out.s3[0],     0x2a154fd6fefcf8fc, "round1 s3[0] mismatch");
-        assert_eq!(out.s4[0],     0xcf4f0422b956d79e, "round1 s4[0] mismatch");
-        assert_eq!(out.parity[0], 0x94ef889f34b549d4, "round1 parity[0] mismatch");
-        assert_eq!(out.s1[12],    0x4d2d214b268eef12, "round1 s1[12] mismatch");
-        assert_eq!(out.s2[24],    0xe0c1cb82d72b11fe, "round1 s2[24] mismatch");
+        assert_eq!(out.s1[0],     0xba136eeeb25e9302, "round1 s1[0] mismatch");
+        assert_eq!(out.s2[0],     0xc272149fc567aeea, "round1 s2[0] mismatch");
+        assert_eq!(out.s3[0],     0xc8bd2b8f7a8c99f5, "round1 s3[0] mismatch");
+        assert_eq!(out.s4[0],     0xf0701490f8009480, "round1 s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x40ac456ef5b5309d, "round1 parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x480694270d21e5a1, "round1 s1[12] mismatch");
+        assert_eq!(out.s2[24],    0x7c18e744759fcb42, "round1 s2[24] mismatch");
     }
 
     #[test]
@@ -241,13 +241,13 @@ mod tests {
         for i in 0..4 {
             out = round(out, i);
         }
-        assert_eq!(out.s1[0],     0x8311c0e4b3a0d63d, "4-round s1[0] mismatch");
-        assert_eq!(out.s2[0],     0x46bee540073cda87, "4-round s2[0] mismatch");
-        assert_eq!(out.s3[0],     0x982520b022b2e77c, "4-round s3[0] mismatch");
-        assert_eq!(out.s4[0],     0x6824912d82939b4c, "4-round s4[0] mismatch");
-        assert_eq!(out.parity[0], 0x4a650be7ac73967e, "4-round parity[0] mismatch");
-        assert_eq!(out.s1[12],    0x4cedbd1b38f381dd, "4-round s1[12] mismatch");
-        assert_eq!(out.s2[24],    0xba16dba67bc05ea2, "4-round s2[24] mismatch");
+        assert_eq!(out.s1[0],     0x7158e5dd99b8cc0c, "4-round s1[0] mismatch");
+        assert_eq!(out.s2[0],     0x872ba76603516216, "4-round s2[0] mismatch");
+        assert_eq!(out.s3[0],     0xdd4f0cba30570302, "4-round s3[0] mismatch");
+        assert_eq!(out.s4[0],     0x6ca21a6dea5e5937, "4-round s4[0] mismatch");
+        assert_eq!(out.parity[0], 0x479e546c40e0f42f, "4-round parity[0] mismatch");
+        assert_eq!(out.s1[12],    0x944b8656772aba7f, "4-round s1[12] mismatch");
+        assert_eq!(out.s2[24],    0xf329c7252c11cf05, "4-round s2[24] mismatch");
     }
 
     #[test]

@@ -5,7 +5,9 @@
 ///   and sponge capacity c=512 bits. If all five conditions below hold, then for all
 ///   adversaries A with T < 2^{B(θ)×|log₂ p_max|} operations:
 ///
-///     |Pr[A distinguishes HDH-2 from a random permutation] − 1/2| < ε_negligible.
+/// ```text
+///   |Pr[A distinguishes HDH-2 from a random permutation] − 1/2| < ε_negligible.
+/// ```
 ///
 /// Conditions:
 ///   (C1) B(θ) ≥ 6         — theta branch number (proved by exhaustive 2^25−1 enumeration)

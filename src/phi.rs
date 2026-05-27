@@ -11,6 +11,7 @@ pub fn phi(state: &State) -> State {
         out.s2[i] ^= state.s3[k];
         out.s3[i] ^= state.s4[j];
         out.s4[i] ^= state.s1[k];
+        out.parity[i] = out.s1[i] ^ out.s2[i] ^ out.s3[i] ^ out.s4[i];
     }
 
     out
